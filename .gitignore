@@ -113,5 +113,7 @@ dmypy.json
 
 OpenRocket*.jar
 
+orhelper/bin/
+
 venv/
 .idea/

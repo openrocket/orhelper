@@ -30,7 +30,8 @@ class OpenRocketInstance:
         """ jar_path is the full path of the OpenRocket .jar file to use
             log_level can be either OFF, ERROR, WARN, INFO, DEBUG, TRACE and ALL
         """
-        self.openrocket = None
+        self.openrocket_core = None
+        self.openrocket_swing = None
         self.started = False
 
         if not os.path.exists(jar_path):
@@ -50,19 +51,20 @@ class OpenRocketInstance:
         jpype.startJVM(jvm_path, "-ea", f"-Djava.class.path={self.jar_path}")
 
         # ----- Java imports -----
-        self.openrocket = jpype.JPackage("net").sf.openrocket
+        self.openrocket_core = jpype.JPackage("info").openrocket.core
+        self.openrocket_swing = jpype.JPackage("info").openrocket.swing
         guice = jpype.JPackage("com").google.inject.Guice
         LoggerFactory = jpype.JPackage("org").slf4j.LoggerFactory
         Logger = jpype.JPackage("ch").qos.logback.classic.Logger
         # -----
 
         # Effectively a minimally viable translation of openrocket.startup.SwingStartup
-        gui_module = self.openrocket.startup.GuiModule()
-        plugin_module = self.openrocket.plugin.PluginModule()
+        gui_module = self.openrocket_swing.startup.GuiModule()
+        plugin_module = self.openrocket_core.plugin.PluginModule()
 
         injector = guice.createInjector(gui_module, plugin_module)
 
-        app = self.openrocket.startup.Application
+        app = self.openrocket_core.startup.Application
         app.setInjector(injector)
 
         gui_module.startLoader()
@@ -198,9 +200,9 @@ class AbstractSimulationListener:
 
     def clone(self):
         return jpype.JProxy((
-            jpype.JPackage("net").sf.openrocket.simulation.listeners.SimulationListener,
-            jpype.JPackage("net").sf.openrocket.simulation.listeners.SimulationEventListener,
-            jpype.JPackage("net").sf.openrocket.simulation.listeners.SimulationComputationListener,
+            jpype.JPackage("info").openrocket.core.simulation.listeners.SimulationListener,
+            jpype.JPackage("info").openrocket.core.simulation.listeners.SimulationEventListener,
+            jpype.JPackage("info").openrocket.core.simulation.listeners.SimulationComputationListener,
             jpype.java.lang.Cloneable,),
             inst=copy(self))
 
@@ -216,13 +218,14 @@ class Helper:
         if not open_rocket_instance.started:
             raise Exception("OpenRocketInstance not yet started")
 
-        self.openrocket = open_rocket_instance.openrocket
+        self.openrocket_core = open_rocket_instance.openrocket_core
+        self.openrocket_swing = open_rocket_instance.openrocket_swing
 
     def load_doc(self, or_filename):
         """ Loads a .ork file and returns the corresponding openrocket document """
 
         or_java_file = jpype.java.io.File(or_filename)
-        loader = self.openrocket.file.GeneralRocketLoader(or_java_file)
+        loader = self.openrocket_core.file.GeneralRocketLoader(or_java_file)
         doc = loader.load()
         return doc
 
@@ -230,7 +233,7 @@ class Helper:
         """ Saves an openrocket document to a .ork file """
         
         or_java_file = jpype.java.io.File(or_filename)
-        saver = self.openrocket.file.GeneralRocketSaver()
+        saver = self.openrocket_core.file.GeneralRocketSaver()
         saver.save(or_java_file, doc)
 
     def run_simulation(self, sim, listeners: List[AbstractSimulationListener] = None):
@@ -242,15 +245,15 @@ class Helper:
             # this method takes in a vararg of SimulationListeners, which is just a fancy way of passing in an array, so
             # we have to pass in an array of length 0 ..
             listener_array = jpype.JArray(
-                self.openrocket.simulation.listeners.AbstractSimulationListener, 1
+                self.openrocket_core.simulation.listeners.AbstractSimulationListener, 1
             )(0)
         else:
             listener_array = [
                 jpype.JProxy(
                     (
-                        self.openrocket.simulation.listeners.SimulationListener,
-                        self.openrocket.simulation.listeners.SimulationEventListener,
-                        self.openrocket.simulation.listeners.SimulationComputationListener,
+                        self.openrocket_core.simulation.listeners.SimulationListener,
+                        self.openrocket_core.simulation.listeners.SimulationEventListener,
+                        self.openrocket_core.simulation.listeners.SimulationComputationListener,
                         jpype.java.lang.Cloneable,
                     ),
                     inst=c,
@@ -269,7 +272,7 @@ class Helper:
         else:
             raise TypeError("Invalid type for flight_data_type")
 
-        return getattr(self.openrocket.simulation.FlightDataType, name)
+        return getattr(self.openrocket_core.simulation.FlightDataType, name)
 
     def get_timeseries(self, simulation, variables: Iterable[Union[FlightDataType, str]], branch_number=0) \
             -> Dict[Union[FlightDataType, str], np.array]:
@@ -308,7 +311,7 @@ class Helper:
         return output
 
     def translate_flight_event(self, flight_event) -> FlightEvent:
-        return {getattr(self.openrocket.simulation.FlightEvent.Type, x.name): x for x in FlightEvent}[flight_event]
+        return {getattr(self.openrocket_core.simulation.FlightEvent.Type, x.name): x for x in FlightEvent}[flight_event]
 
     def get_events(self, simulation) -> Dict[FlightEvent, float]:
         """Returns a dictionary of all the flight events in a given simulation.

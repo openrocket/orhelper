@@ -15,7 +15,7 @@ class OrLogLevel(Enum):
     TRACE = auto()
     ALL = auto()
 
-# Mirrors net.sf.openrocket.simulation.FlightDataType
+# Mirrors info.openrocket.core.simulation.FlightDataType
 class FlightDataType(Enum):
     TYPE_TIME = auto()
     TYPE_ALTITUDE = auto()
@@ -73,7 +73,7 @@ class FlightDataType(Enum):
     TYPE_TIME_STEP = auto()
     TYPE_COMPUTATION_TIME = auto()
 
-# Mirrors net.sf.openrocket.simulation.FlightEvent
+# Mirrors info.openrocket.core.simulation.FlightEvent
 class FlightEvent(Enum):
     LAUNCH = auto()
     IGNITION = auto()
