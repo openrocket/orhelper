@@ -58,6 +58,9 @@ class OpenRocketInstance:
         Logger = jpype.JPackage("ch").qos.logback.classic.Logger
         # -----
 
+        or_logger = LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME)
+        or_logger.setLevel(self._translate_log_level())
+
         # Effectively a minimally viable translation of openrocket.startup.SwingStartup
         gui_module = self.openrocket_swing.startup.GuiModule()
         plugin_module = self.openrocket_core.plugin.PluginModule()
@@ -75,9 +78,6 @@ class OpenRocketInstance:
         preset_loader.blockUntilLoaded()
         motor_loader = _get_private_field(gui_module, "motorLoader")
         motor_loader.blockUntilLoaded()
-
-        or_logger = LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME)
-        or_logger.setLevel(self._translate_log_level())
 
         self.started = True
 
