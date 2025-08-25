@@ -11,7 +11,7 @@ from ._enums import *
 
 logger = logging.getLogger(__name__)
 
-CLASSPATH = os.environ.get("CLASSPATH", "OpenRocket.jar")
+CLASSPATH = os.environ.get("CLASSPATH", "")
 
 __all__ = [
     'OpenRocketInstance',
@@ -26,10 +26,30 @@ class OpenRocketInstance:
         JVM will always be shutdown.
     """
 
-    def __init__(self, jar_path: str = CLASSPATH, log_level: Union[OrLogLevel, str] = OrLogLevel.ERROR):
-        """ jar_path is the full path of the OpenRocket .jar file to use
-            log_level can be either OFF, ERROR, WARN, INFO, DEBUG, TRACE and ALL
+    def __init__(self, jar_path: str=CLASSPATH, log_level: Union[OrLogLevel, str] = OrLogLevel.ERROR,
+                 **kwargs):
+        """ OpenRocketInstance now uses keyward arguments. In the interest
+            of backward compatibility positional arguments are still accepted,
+            but are deprecated.
+        
+            keyword arguments:
+                orhome: location of installed OpenRocket
+                jar:    location of jar file
+                jre:    location of JRE
+                loglevel: log level, 'OFF', 'ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE', 'ALL'
+
+            legacy positional arguments:
+                jar_path: location of jar file
+                log_level: as for loglevel above
+            
         """
+        # parse arguments
+        orhome = kwargs.get("orhome", "")
+        jar = kwargs.get("jar", "")
+        jvm = kwargs.get("jvm", "")
+
+        # if orhome wasn't passed in, look up default 
+        
         self.openrocket_core = None
         self.openrocket_swing = None
         self.started = False
