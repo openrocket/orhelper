@@ -47,7 +47,7 @@ with orhelper.OpenRocketInstance() as instance:
     ax1 = fig.add_subplot(111)
     for ang, data in data_runs.items():
         ax1.plot(data[FlightDataType.TYPE_POSITION_X], data[FlightDataType.TYPE_ALTITUDE],  # X is upwind for simple.ork
-                 label='%3.1f$^\circ$' % ang,
+                 label=f'{ang:.1f}\N{DEGREE SIGN}',
                  linestyle='-' if ang == optimal else '--')
 
     ax1.legend()
