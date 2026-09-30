@@ -220,6 +220,12 @@ class AbstractSimulationListener:
     def endSimulation(self, status, simulation_exception) -> None:
         pass
 
+    def startSimulationBranch(self, status) ->  None :
+        pass
+
+    def endSimulationBranch(self, status, simulation_exception) -> None:
+        pass
+
     def preStep(self, status) -> bool:
         return True
 
