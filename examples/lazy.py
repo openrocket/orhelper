@@ -1,4 +1,3 @@
-import os
 import math
 import numpy as np
 from scipy.optimize import fmin
@@ -11,7 +10,7 @@ with orhelper.OpenRocketInstance() as instance:
     orh = orhelper.Helper(instance)
 
     # Load document, run simulation and get data and events
-    doc = orh.load_doc(os.path.join(os.path.dirname(__file__), 'simple.ork'))
+    doc = orh.load_doc(orhelper.sample_ork_path())
     sim = doc.getSimulation(0)
 
 

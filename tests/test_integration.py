@@ -10,7 +10,7 @@ from zipfile import ZipFile
 import jpype
 import numpy as np
 
-from orhelper import AbstractSimulationListener, FlightDataType, FlightEvent, Helper, OpenRocketInstance
+from orhelper import AbstractSimulationListener, FlightDataType, FlightEvent, Helper, OpenRocketInstance, sample_ork_path
 
 
 class RecordingListener(AbstractSimulationListener):
@@ -80,7 +80,7 @@ class IntegrationTests(unittest.TestCase):
             cls.scratch.cleanup()
 
     def load_simple(self):
-        return self.helper.load_doc(str(Path(__file__).resolve().parents[1] / "examples" / "simple.ork"))
+        return self.helper.load_doc(sample_ork_path())
 
     def test_all_java_data_types_and_events_are_supported(self):
         types = self.core.simulation.FlightDataType

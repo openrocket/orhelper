@@ -1,4 +1,3 @@
-import os
 import numpy as np
 import orhelper
 from random import gauss
@@ -17,7 +16,7 @@ class LandingPoints(list):
 
             # Load the document and get simulation
             orh = orhelper.Helper(instance)
-            doc = orh.load_doc(os.path.join(os.path.dirname(__file__), 'simple.ork'))
+            doc = orh.load_doc(orhelper.sample_ork_path())
             sim = doc.getSimulation(0)
 
             # Randomize various parameters
