@@ -89,6 +89,7 @@ class CompatibilityTests(unittest.TestCase):
         instance = OpenRocketInstance.__new__(OpenRocketInstance)
         instance.jvm = "test-jvm"
         instance.jar = "test.jar"
+        instance.jvm_args = ()
         instance.started = False
         with patch("orhelper._orhelper.jpype.startJVM"), \
                 patch("orhelper._orhelper.jpype.shutdownJVM") as shutdown, \
