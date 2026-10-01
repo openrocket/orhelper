@@ -1,18 +1,17 @@
 import os
-import contextlib
 import platform
 import logging
 from copy import copy
 from pathlib import Path
 import shutil
-import sys
-from typing import Union, List, Iterable, Dict
+from typing import Union, List, Iterable, Dict, Optional
 
 import jpype
 import jpype.imports
 import numpy as np
 
 from ._enums import *
+from ._errors import *
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +24,88 @@ __all__ = [
 
 CLASSPATH = os.environ.get("CLASSPATH", "OpenRocket.jar")
 
+# Python has no OFF/TRACE/ALL levels, so map the OrLogLevel names onto the closest ones.
+_PYTHON_LOG_LEVELS = {
+    OrLogLevel.OFF: logging.CRITICAL + 1,
+    OrLogLevel.ERROR: logging.ERROR,
+    OrLogLevel.WARN: logging.WARNING,
+    OrLogLevel.INFO: logging.INFO,
+    OrLogLevel.DEBUG: logging.DEBUG,
+    OrLogLevel.TRACE: 5,
+    OrLogLevel.ALL: 1,
+}
+
+_KEYWORD_ARGUMENTS = ("orhome", "jar", "jvm", "jvm_args", "loglevel")
+
+
+def _to_path(value, name: str) -> Optional[Path]:
+    if value is None:
+        return None
+    try:
+        return Path(value)
+    except TypeError:
+        raise TypeError(f"'{name}' must be a path (str or os.PathLike), not {type(value).__name__}") from None
+
+
+def _parse_log_level(level) -> OrLogLevel:
+    if isinstance(level, OrLogLevel):
+        return level
+    if isinstance(level, str):
+        try:
+            return OrLogLevel[level.upper()]
+        except KeyError:
+            pass
+        raise ValueError(f"Unknown log level '{level}'. Allowed values are: "
+                         f"{', '.join(member.name for member in OrLogLevel)}")
+    raise TypeError(f"log level must be an OrLogLevel or a string, not {type(level).__name__}")
+
+
+def _parse_jvm_args(value) -> tuple:
+    if value is None:
+        return ()
+    if isinstance(value, (str, bytes)):
+        raise TypeError("'jvm_args' must be a list of strings, for example ['-Xmx2g'], not a single string")
+    try:
+        args = tuple(value)
+    except TypeError:
+        raise TypeError("'jvm_args' must be a list of strings, for example ['-Xmx2g']") from None
+    if not all(isinstance(arg, str) for arg in args):
+        raise TypeError("'jvm_args' must be a list of strings, for example ['-Xmx2g']")
+    return args
+
+
+def _default_orhome() -> Optional[Path]:
+    """Default location of an installed OpenRocket on this platform, if known."""
+    system = platform.system()
+    if system == 'Linux':
+        return Path(Path.home(), 'OpenRocket')
+    if system == 'Darwin':
+        return Path('/Applications', 'OpenRocket.app', 'Contents', 'Resources')
+    if system == 'Windows':
+        program_files = os.getenv('PROGRAMFILES')
+        if program_files:
+            return Path(program_files, 'OpenRocket')
+    return None
+
+
+def _installed_jvm(orhome: Path) -> Optional[Path]:
+    system = platform.system()
+    if system == 'Darwin':
+        return Path(orhome, 'jre.bundle', 'Contents', 'Home', 'lib', 'server', 'libjvm.dylib')
+    if system == 'Linux':
+        return Path(orhome, 'jre', 'lib', 'server', 'libjvm.so')
+    if system == 'Windows':
+        return Path(orhome, 'jre', 'bin', 'server', 'jvm.dll')
+    return None
+
+
 class OpenRocketInstance:
     """ This class is designed to be called using the 'with' construct. This
         will ensure that no matter what happens within that context, the 
         JVM will always be shutdown.
+
+        JPype can start the JVM only once per Python process, so keep all
+        OpenRocket work inside a single 'with' block.
     """
 
     def __init__(self, jar_path: str = None, log_level: Union[OrLogLevel, str] = OrLogLevel.INFO, **kwargs):
@@ -39,8 +116,13 @@ class OpenRocketInstance:
                 location in installed OpenRocket.
             jvm: location of Java Virtual Machine.  Default is
                 location in installed OpenRocket.
-            loglevel: log level.  Allowed values are 'OFF', 'ERROR',
-                'WARN', 'INFO', 'DEBUG', 'TRACE', and 'ALL'. Default is 'INFO'
+            jvm_args: list of extra arguments for the JVM, for example
+                ['-Xmx2g'] or ['-Djava.awt.headless=true'].
+            loglevel: log level.  Allowed values (case-insensitive) are 'OFF',
+                'ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE', and 'ALL'. Default is 'INFO'.
+                This sets the level of OpenRocket's own (Java) logging, and of the
+                'orhelper' Python logger. orhelper does not configure Python logging
+                handlers; use logging.basicConfig() to see its messages.
         legacy positional arguments:
             jar_path: location of OpenRocket .jar file, if not specified by
                 keyword argument above. An explicit path takes precedence over
@@ -48,37 +130,41 @@ class OpenRocketInstance:
                 CLASSPATH or 'OpenRocket.jar'.
             log_level can be either 'OFF', 'ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE' and 'ALL',
                 if not specified by keyword argument
+
+        Raises:
+            TypeError: for unknown keyword arguments or arguments of the wrong type.
+            ValueError: for an unknown log level.
+            OpenRocketNotFoundError: if the OpenRocket installation or jar can't be found.
+            JVMNotFoundError: if no Java Virtual Machine can be found.
         """
 
+        unknown = sorted(set(kwargs) - set(_KEYWORD_ARGUMENTS))
+        if unknown:
+            raise TypeError(f"OpenRocketInstance() got unexpected keyword argument(s): {', '.join(unknown)}. "
+                            f"Valid keyword arguments are: {', '.join(_KEYWORD_ARGUMENTS)}")
+
         # Get orhome, jar, jvm, and log level from kwargs
-        orhome = None
-        with contextlib.suppress(Exception) :
-            orhome = Path(kwargs.get("orhome", None))
-        if orhome is not None :
-            if Path.exists(orhome) :
-                installed = True
-            else :
-                sys.exit(f"Specified OpenRocket installation directory '{orhome}' not found")
-            
-        self.jar = None
-        with contextlib.suppress(Exception) :
-            self.jar = Path(kwargs.get("jar", jar_path))
-        if (self.jar is not None) and not Path.exists(self.jar) :
-            sys.exit(f"Specified jar file '{self.jar}' not found")
+        orhome = _to_path(kwargs.get("orhome"), "orhome")
+        installed = False
+        if orhome is not None:
+            if not orhome.exists():
+                raise OpenRocketNotFoundError(f"Specified OpenRocket installation directory '{orhome}' not found")
+            installed = True
 
-        self.jvm = None
-        with contextlib.suppress(Exception) :            
-            self.jvm = Path(kwargs.get("jvm", None))
-        if (self.jvm is not None) and not Path.exists(self.jvm) :
-            sys.exit(f"Specified jvm file '{self.jvm}' not found")
+        jar = kwargs.get("jar")
+        self.jar = _to_path(jar if jar is not None else jar_path, "jar")
+        if self.jar is not None and not self.jar.exists():
+            raise OpenRocketNotFoundError(f"Specified jar file '{self.jar}' not found")
 
-        log_level = kwargs.get('loglevel', log_level)
-        if isinstance(log_level, str):
-            self.or_log_level = OrLogLevel[log_level]
-        else:
-            self.or_log_level = log_level
+        self.jvm = _to_path(kwargs.get("jvm"), "jvm")
+        if self.jvm is not None and not self.jvm.exists():
+            raise JVMNotFoundError(f"Specified jvm file '{self.jvm}' not found")
 
-        logging.basicConfig(level=self.or_log_level.value)
+        self.jvm_args = _parse_jvm_args(kwargs.get("jvm_args"))
+
+        self.or_log_level = _parse_log_level(kwargs.get('loglevel', log_level))
+        # Only touch our own logger: a library must not configure the root logger.
+        logging.getLogger(__name__.partition('.')[0]).setLevel(_PYTHON_LOG_LEVELS[self.or_log_level])
 
         # if either jar or jvm is not specified, try to get them from
         # the installed OpenRocket.
@@ -87,49 +173,48 @@ class OpenRocketInstance:
             # if location of OR is not specified, look in
             # platform-specific default location
             if orhome is None :
-                if platform.system() == 'Linux' :
-                    orhome = Path(Path.home(), 'OpenRocket')
-                elif platform.system() == 'Darwin' :
-                    orhome = Path('/Applications', 'OpenRocket.app', 'Contents', 'Resources')
-                elif platform.system() == 'Windows' :
-                    orhome = Path(os.getenv('PROGRAMFILES'), 'OpenRocket')
-                if Path.exists(orhome) :
-                    installed = True
-                else :
-                    installed = False
+                orhome = _default_orhome()
+                installed = orhome is not None and orhome.exists()
 
             # if we found an installation, pull jar and/or jvm from it
             if installed :
                 logger.info(f" OpenRocket installation found at '{orhome}'")
                 if self.jar is None :
                     if platform.system() == 'Darwin' :
-                        jarglob = list(Path(orhome, 'app', 'jar').glob('OpenRocket*.jar'))
+                        jarglob = sorted(Path(orhome, 'app', 'jar').glob('OpenRocket*.jar'))
                     else :
-                        jarglob = list(Path(orhome, 'jar').glob('OpenRocket*.jar'))
-                    if (jarglob is not None) and (len(jarglob)) > 0 :
+                        jarglob = sorted(Path(orhome, 'jar').glob('OpenRocket*.jar'))
+                    if len(jarglob) > 0 :
                         self.jar = jarglob[0]
                     else :
-                        sys.exit(f"No OpenRocket jar file found in installed OpenRocket at '{orhome}'")
+                        raise OpenRocketNotFoundError(
+                            f"No OpenRocket jar file found in installed OpenRocket at '{orhome}'. "
+                            f"Pass jar='/path/to/OpenRocket.jar' to select one.")
 
                 if self.jvm is None :
-                    if platform.system() == 'Darwin' :
-                        self.jvm = Path(orhome, 'jre.bundle', 'Contents', 'Home', 'lib', 'server', 'libjvm.dylib')
-                    elif platform.system() =='Linux' :
-                        self.jvm = Path(orhome, 'jre', 'lib', 'server', 'libjvm.so')
-                    elif platform.system() == 'Windows' :
-                        self.jvm = Path(orhome, 'jre', 'bin', 'server', 'jvm.dll')
-                    if not Path.exists(self.jvm) :
-                        sys.exit(f"No JVM found in installed OpenRocket at '{orhome}'")
-                        
+                    self.jvm = _installed_jvm(orhome)
+                    if self.jvm is not None and not self.jvm.exists() :
+                        raise JVMNotFoundError(
+                            f"No JVM found in installed OpenRocket at '{orhome}'. "
+                            f"Pass jvm='/path/to/libjvm' to use a different Java runtime.")
+
         # if we haven't found a jvm, use system default
         if self.jvm is None :
-            self.jvm = Path(jpype.getDefaultJVMPath())
+            try :
+                self.jvm = Path(jpype.getDefaultJVMPath())
+            except jpype.JVMNotFoundException as e :
+                raise JVMNotFoundError(
+                    "No Java Virtual Machine found. Install Java (17 for OpenRocket 23.09 and newer), "
+                    "set JAVA_HOME, or pass jvm='/path/to/libjvm'.") from e
 
         # If no jar was selected, fall back to CLASSPATH or OpenRocket.jar.
         if self.jar is None :
             self.jar = Path(CLASSPATH)
-            if not Path.exists(self.jar) :
-                sys.exit(f"No jar file found at positional arg value, specified CLASSPATH, or default '{self.jar}'")
+            if not self.jar.exists() :
+                raise OpenRocketNotFoundError(
+                    "No OpenRocket jar file found: there is no installed OpenRocket in the default location, "
+                    f"and '{self.jar}' (from CLASSPATH or the default 'OpenRocket.jar') does not exist. "
+                    "Pass jar='/path/to/OpenRocket.jar' or orhome='/path/to/OpenRocket'.")
 
         logger.info(f" jar = '{self.jar}'")
         logger.info(f" jvm = '{self.jvm}'")
@@ -139,7 +224,19 @@ class OpenRocketInstance:
         self.started = False
 
     def __enter__(self):
-        jpype.startJVM(f'{self.jvm}', "-ea", f"-Djava.class.path={self.jar}")
+        if jpype.isJVMStarted():
+            raise JVMAlreadyStartedError(
+                "A JVM is already running in this Python process. Use a single 'with OpenRocketInstance()' "
+                "block for all OpenRocket work.")
+        try:
+            jpype.startJVM(f'{self.jvm}', "-ea", f"-Djava.class.path={self.jar}", *self.jvm_args)
+        except OSError as e:
+            if "restart" in str(e).lower():
+                raise JVMAlreadyStartedError(
+                    "The JVM was already started and shut down in this Python process, and JPype cannot "
+                    "restart it. Do all OpenRocket work in a single 'with OpenRocketInstance()' block, "
+                    "or use a new process.") from e
+            raise
 
         try:
             self._initialize()
@@ -344,7 +441,7 @@ class Helper:
 
     def __init__(self, open_rocket_instance: OpenRocketInstance):
         if not open_rocket_instance.started:
-            raise Exception("OpenRocketInstance not yet started")
+            raise OrHelperError("OpenRocketInstance not yet started; use it inside a 'with OpenRocketInstance() as instance:' block")
 
         self.openrocket_core = open_rocket_instance.openrocket_core
         self.openrocket_swing = open_rocket_instance.openrocket_swing

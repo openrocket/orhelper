@@ -142,14 +142,15 @@ More background is on the
 
 ## Troubleshooting
 
-- **`SystemExit` / "…not found" when starting.** orhelper couldn't find OpenRocket
-  or its Java runtime. These failures currently call `sys.exit`, so they also
-  end notebooks and are not caught by `except Exception`. Pass `jar="…/OpenRocket.jar"`
-  (and `jvm="…/libjvm.*"` if no Java runtime is found). The default install
+- **`OpenRocketNotFoundError` / `JVMNotFoundError` when starting.** orhelper couldn't
+  find OpenRocket or its Java runtime. The message says what was missing. Pass
+  `jar="…/OpenRocket.jar"` (and `jvm="…/libjvm.*"` if no Java runtime is found), or
+  `orhome="…"` for an installation in a non-default place. The default install
   locations it looks in are `~/OpenRocket` (Linux),
   `/Applications/OpenRocket.app` (macOS) and `%PROGRAMFILES%\OpenRocket` (Windows).
-- **`OSError: JVM cannot be restarted`.** JPype starts the JVM once per Python
-  process, so a second `OpenRocketInstance` (even after the first one closed) fails.
+  Both are subclasses of `orhelper.OrHelperError` (a `RuntimeError`).
+- **`JVMAlreadyStartedError`.** JPype starts the JVM once per Python process, so a
+  second `OpenRocketInstance` (even after the first one closed) fails.
   Do all OpenRocket work in a single `with` block,
   and use a new process to switch OpenRocket versions (for example with
   `multiprocessing` using the `spawn` start method).
@@ -160,8 +161,13 @@ More background is on the
 - **A result contains `nan`.** Some series are `nan` at the first time step (for
   example velocities at t=0). Use `np.nanmax`/`np.nanmin`, or drop the first sample.
 - **Lots of log output.** Pass `log_level="ERROR"` to silence OpenRocket's Java logging.
-  (Python-side `INFO` messages from orhelper itself are still printed; this is a
-  known issue.)
+  orhelper's own Python messages go through the `orhelper` logger and are only shown
+  if you configure logging (for example `logging.basicConfig(level=logging.INFO)`).
+- **Need more memory, or a headless JVM?** Pass JVM options with
+  `OpenRocketInstance(jvm_args=["-Xmx4g", "-Djava.awt.headless=true"])`.
+- **`TypeError: … unexpected keyword argument`.** Only `orhome`, `jar`, `jvm`, `jvm_args`
+  and `loglevel` (plus the positional `jar_path` and `log_level`) are accepted; a
+  misspelt option is an error rather than being ignored.
 - **`AttributeError: … not available in this OpenRocket version`.** You asked for a
   `FlightDataType` introduced after the OpenRocket version you're running.
 - **Showing plots.** Leave the `with OpenRocketInstance()` block before calling
