@@ -28,9 +28,14 @@ OPENROCKET_JAR=/path/to/OpenRocket.jar python -m unittest discover -s tests -v
 ```
 
 JPype can start the JVM only once per process, so run each OpenRocket version in
-its own process. If you change anything that touches OpenRocket's API, run the
-integration tests against as many supported versions (22.02, 23.09, 24.12, 26.xx)
-as you can and mention which ones in your pull request.
+its own process.
+
+CI runs the integration tests against the released 22.02, 23.09 and 24.12 jars
+(one job per version). 26.xx has no stable release, so if you change anything
+that touches OpenRocket's API, also run the integration tests against a 26.xx
+snapshot jar locally and mention the result in your pull request. Release jars
+are on the [OpenRocket releases page](https://github.com/openrocket/openrocket/releases)
+(`OpenRocket-<version>.jar`).
 
 ## Examples and documentation
 

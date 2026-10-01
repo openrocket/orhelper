@@ -536,12 +536,15 @@ class Helper:
     def get_final_values(self, simulation, variables: Iterable[Union[FlightDataType, str]], branch_number=0) \
             -> Dict[Union[FlightDataType, str], float]:
         """
-        Gets a the final value in the time series from a simulation given variable names.
+        Gets the final value in the time series from a simulation given variable names.
+
+        This is the last sample of the series, which can be NaN for variables that are
+        not recorded on the last data point (this depends on the OpenRocket version).
 
         :param simulation: An openrocket simulation object.
         :param variables: A sequence of FlightDataType or strings representing the desired variables
-        :param branch_number:
-        :return:
+        :param branch_number: Flight branch to read; 0 is the sustainer, 1, 2, ... are booster branches.
+        :return: Dictionary mapping each requested variable to its final value.
         """
 
         branch = simulation.getSimulatedData().getBranch(branch_number)

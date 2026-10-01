@@ -21,8 +21,46 @@ jobs:
       - name: Install
         run: pip install -e .
       # The Java integration tests are skipped here because they need an
-      # OpenRocket jar (set OPENROCKET_JAR to run them locally).
+      # OpenRocket jar; the `integration` job below runs them.
       - name: Run tests
+        run: python -m unittest discover -s tests -v
+
+  integration:
+    name: Integration tests (OpenRocket ${{ matrix.openrocket }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Released versions only; 26.xx has no stable release yet, so test it
+        # locally with a snapshot jar (see CONTRIBUTING.md).
+        openrocket: ["22.02", "23.09", "24.12"]
+    env:
+      OPENROCKET_JAR: ${{ github.workspace }}/OpenRocket-${{ matrix.openrocket }}.jar
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Cache OpenRocket jar
+        id: jar-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.OPENROCKET_JAR }}
+          key: openrocket-jar-${{ matrix.openrocket }}
+      - name: Download OpenRocket ${{ matrix.openrocket }}
+        if: steps.jar-cache.outputs.cache-hit != 'true'
+        run: |
+          curl --fail --location --retry 3 --output "$OPENROCKET_JAR" \
+            "https://github.com/openrocket/openrocket/releases/download/release-${{ matrix.openrocket }}/OpenRocket-${{ matrix.openrocket }}.jar"
+      - name: Install
+        run: pip install -e .
+      # Each OpenRocket version runs in its own job because JPype can only
+      # start one JVM per Python process.
+      - name: Run tests, including the Java integration tests
         run: python -m unittest discover -s tests -v
 
   package:
