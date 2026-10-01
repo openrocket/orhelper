@@ -125,7 +125,9 @@ class IntegrationTests(unittest.TestCase):
             self.assertTrue(np.any(np.isfinite(acceleration)))
         final = self.helper.get_final_values(sim, variables)
         for variable in variables:
-            self.assertAlmostEqual(float(final[variable]), data[variable][-1])
+            # The final value is the last sample, which may legitimately be NaN
+            # (some builds don't fill in every variable on the last data point).
+            np.testing.assert_allclose(float(final[variable]), data[variable][-1], equal_nan=True)
         events = self.helper.get_events(sim)
         self.assertIn(FlightEvent.APOGEE, events)
         self.assertIn(FlightEvent.GROUND_HIT, events)

@@ -237,7 +237,8 @@ OPENROCKET_JAR=/path/to/OpenRocket.jar python -m unittest discover -s tests -v
 ```
 
 These tests check every built-in flight-data type and event, actual simulation
-results, saving and reloading, listener cloning, and multistage branches.
+results, saving and reloading, listener cloning, and multistage branches. CI runs
+them against the released OpenRocket 22.02, 23.09 and 24.12 jars.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for more, and [CHANGELOG.md](CHANGELOG.md)
 for release notes.
 
