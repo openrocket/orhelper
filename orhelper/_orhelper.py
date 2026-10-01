@@ -31,7 +31,7 @@ class OpenRocketInstance:
         JVM will always be shutdown.
     """
 
-    def __init__(self, jar_path: str = CLASSPATH, log_level: Union[OrLogLevel, str] = OrLogLevel.INFO, **kwargs):
+    def __init__(self, jar_path: str = None, log_level: Union[OrLogLevel, str] = OrLogLevel.INFO, **kwargs):
         """ keyword arguments:
             orhome: location of installed OpenRocket.  Default is
                 platform-dependant default installation location.
@@ -43,8 +43,9 @@ class OpenRocketInstance:
                 'WARN', 'INFO', 'DEBUG', 'TRACE', and 'ALL'. Default is 'INFO'
         legacy positional arguments:
             jar_path: location of OpenRocket .jar file, if not specified by
-                keyword argument above.  Defaults are (1) value of CLASSPATH environment
-                variable if any, or (2) 'OpenRocket.jar'
+                keyword argument above. An explicit path takes precedence over
+                the installed jar. Without either, try the installation, then
+                CLASSPATH or 'OpenRocket.jar'.
             log_level can be either 'OFF', 'ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE' and 'ALL',
                 if not specified by keyword argument
         """
@@ -61,7 +62,7 @@ class OpenRocketInstance:
             
         self.jar = None
         with contextlib.suppress(Exception) :
-            self.jar = Path(kwargs.get("jar", None))
+            self.jar = Path(kwargs.get("jar", jar_path))
         if (self.jar is not None) and not Path.exists(self.jar) :
             sys.exit(f"Specified jar file '{self.jar}' not found")
 
@@ -97,8 +98,6 @@ class OpenRocketInstance:
                 else :
                     installed = False
 
-            print(f'orhome is {orhome}')
-            
             # if we found an installation, pull jar and/or jvm from it
             if installed :
                 logger.info(f" OpenRocket installation found at '{orhome}'")
@@ -126,10 +125,9 @@ class OpenRocketInstance:
         if self.jvm is None :
             self.jvm = Path(jpype.getDefaultJVMPath())
 
-        # if we still haven't found a jar, we'll take it from the positional argument
-        # (which in turn means the given argument, CLASSPATH, or OpenRocket.jar)
+        # If no jar was selected, fall back to CLASSPATH or OpenRocket.jar.
         if self.jar is None :
-            self.jar = Path(jar_path)
+            self.jar = Path(CLASSPATH)
             if not Path.exists(self.jar) :
                 sys.exit(f"No jar file found at positional arg value, specified CLASSPATH, or default '{self.jar}'")
 
@@ -143,9 +141,21 @@ class OpenRocketInstance:
     def __enter__(self):
         jpype.startJVM(f'{self.jvm}', "-ea", f"-Djava.class.path={self.jar}")
 
+        try:
+            self._initialize()
+        except BaseException:
+            # A failed __enter__ does not call __exit__.
+            self._dispose_windows()
+            jpype.shutdownJVM()
+            raise
+
+        self.started = True
+        return self
+
+    def _initialize(self):
+
         # ----- Java imports -----
-        self.openrocket_core = jpype.JPackage("info").openrocket.core
-        self.openrocket_swing = jpype.JPackage("info").openrocket.swing
+        self.openrocket_core, self.openrocket_swing = _get_openrocket_packages()
         guice = jpype.JPackage("com").google.inject.Guice
         LoggerFactory = jpype.JPackage("org").slf4j.LoggerFactory
         Logger = jpype.JPackage("ch").qos.logback.classic.Logger
@@ -163,24 +173,42 @@ class OpenRocketInstance:
         app = self.openrocket_core.startup.Application
         app.setInjector(injector)
 
-        gui_module.startLoader()
+        # 26.x preferences initialize Swing's look and feel. Do this on the
+        # calling thread before either database loader requests preferences.
+        app.getPreferences()
 
         # Ensure that loaders are done loading before continuing
         # Without this there seems to be a race condition bug that leads to the whole thing freezing
         preset_loader = _get_private_field(gui_module, "presetLoader")
-        preset_loader.blockUntilLoaded()
         motor_loader = _get_private_field(gui_module, "motorLoader")
+
+        # Start the databases directly: 26.x GuiModule.startLoader() also opens
+        # motor update dialogs, which fail headless and can block Python scripts.
+        system = jpype.java.lang.System
+        if hasattr(preset_loader, "markAsLoaded") and system.getProperty("openrocket.bypass.presets") is not None:
+            preset_loader.markAsLoaded()
+        else:
+            preset_loader.startLoading()
+        if hasattr(motor_loader, "markAsLoaded") and system.getProperty("openrocket.bypass.motors") is not None:
+            motor_loader.markAsLoaded()
+        else:
+            initializer = getattr(self.openrocket_core.database, "MotorDatabaseInitializer", None)
+            if initializer is not None:
+                initializer.initialize()
+            motor_loader.startLoading()
+
+        preset_loader.blockUntilLoaded()
         motor_loader.blockUntilLoaded()
 
-        self.started = True
-
-        return self
-
-    def __exit__(self, ex, value, tb):
-
+    @staticmethod
+    def _dispose_windows():
         # Dispose any open windows (usually just a loading screen) which can prevent the JVM from shutting down
         for window in jpype.java.awt.Window.getWindows():
             window.dispose()
+
+    def __exit__(self, ex, value, tb):
+
+        self._dispose_windows()
 
         jpype.shutdownJVM()
         logger.info("JVM shut down")
@@ -298,10 +326,11 @@ class AbstractSimulationListener:
         return None
 
     def clone(self):
+        core, _ = _get_openrocket_packages()
         return jpype.JProxy((
-            jpype.JPackage("info").openrocket.core.simulation.listeners.SimulationListener,
-            jpype.JPackage("info").openrocket.core.simulation.listeners.SimulationEventListener,
-            jpype.JPackage("info").openrocket.core.simulation.listeners.SimulationComputationListener,
+            core.simulation.listeners.SimulationListener,
+            core.simulation.listeners.SimulationEventListener,
+            core.simulation.listeners.SimulationComputationListener,
             jpype.java.lang.Cloneable,),
             inst=copy(self))
 
@@ -364,6 +393,10 @@ class Helper:
         sim.simulate(listener_array)
 
     def translate_flight_data_type(self, flight_data_type:Union[FlightDataType, str]):
+        """Resolve a variable available in the loaded OpenRocket version.
+
+        TYPE_PROPELLANT_MASS is kept as a legacy name for TYPE_MOTOR_MASS.
+        """
         if isinstance(flight_data_type, FlightDataType):
             name = flight_data_type.name
         elif isinstance(flight_data_type, str):
@@ -371,7 +404,19 @@ class Helper:
         else:
             raise TypeError("Invalid type for flight_data_type")
 
-        return getattr(self.openrocket_core.simulation.FlightDataType, name)
+        types = self.openrocket_core.simulation.FlightDataType
+        aliases = {
+            "TYPE_PROPELLANT_MASS": "TYPE_MOTOR_MASS",
+            "TYPE_MOTOR_MASS": "TYPE_PROPELLANT_MASS",
+        }
+        try:
+            return getattr(types, name)
+        except AttributeError:
+            if name in aliases:
+                return getattr(types, aliases[name])
+            raise AttributeError(
+                f"Flight data type '{name}' is not available in this OpenRocket version"
+            ) from None
 
     def get_timeseries(self, simulation, variables: Iterable[Union[FlightDataType, str]], branch_number=0) \
             -> Dict[Union[FlightDataType, str], np.array]:
@@ -410,17 +455,24 @@ class Helper:
         return output
 
     def translate_flight_event(self, flight_event) -> FlightEvent:
-        return {getattr(self.openrocket_core.simulation.FlightEvent.Type, x.name): x for x in FlightEvent}[flight_event]
+        # Resolve only this event; older releases may lack newer Java constants.
+        return FlightEvent[str(flight_event.name())]
 
-    def get_events(self, simulation) -> Dict[FlightEvent, float]:
+    def get_events(self, simulation, branch_number=0) -> Dict[FlightEvent, List[float]]:
         """Returns a dictionary of all the flight events in a given simulation.
            Key is FlightEvent and value is a list of all the times at which the event occurs.
+           branch_number selects the sustainer (0 by default) or a booster branch.
         """
-        branch = simulation.getSimulatedData().getBranch(0)
+        branch = simulation.getSimulatedData().getBranch(branch_number)
 
         output = dict()
         for ev in branch.getEvents():
-            type = self.translate_flight_event(ev.getType())
+            try:
+                type = self.translate_flight_event(ev.getType())
+            except KeyError:
+                # Event type added by a newer OpenRocket than this enum knows about
+                logger.warning(f"Skipping unknown flight event '{ev.getType().name()}'")
+                continue
             if type in output:
                 output[type].append(float(ev.getTime()))
             else:
@@ -455,6 +507,18 @@ class JIterator:
             raise StopIteration()
         else:
             return next(self.jit)
+
+def _get_openrocket_packages():
+    try:
+        jpype.JClass("info.openrocket.core.startup.Application")
+    except TypeError:
+        # OpenRocket 22.02/23.09 used one package before the core/Swing split.
+        jpype.JClass("net.sf.openrocket.startup.Application")
+        package = jpype.JPackage("net").sf.openrocket
+        return package, package
+    package = jpype.JPackage("info").openrocket
+    return package.core, package.swing
+
 
 def _get_private_field(obj, field_name):
     field = obj.getClass().getDeclaredField(field_name)

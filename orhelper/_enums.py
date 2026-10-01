@@ -73,6 +73,26 @@ class FlightDataType(Enum):
     TYPE_TIME_STEP = auto()
     TYPE_COMPUTATION_TIME = auto()
 
+    # Append new members so existing numeric values remain unchanged.
+    TYPE_ALTITUDE_ABOVE_SEA = auto()
+    TYPE_MOTOR_MASS = auto()
+    TYPE_THRUST_WEIGHT_RATIO = auto()
+    TYPE_WIND_DIRECTION = auto()
+    TYPE_AIR_DENSITY = auto()
+    TYPE_ACCELERATION_X = auto()
+    TYPE_ACCELERATION_Y = auto()
+    TYPE_ACCELERATION_BODYX = auto()
+    TYPE_ACCELERATION_BODYY = auto()
+    TYPE_ACCELERATION_BODYZ = auto()
+    TYPE_DAMPING_RATIO = auto()
+    TYPE_NATURAL_FREQUENCY = auto()
+    TYPE_THRUST_CORRECTION = auto()
+    TYPE_CNA = auto()
+    TYPE_DAMPING_MOMENT_COEFF = auto()
+    TYPE_DAMPING_MOMENT_COEFF_AERODYNAMIC = auto()
+    TYPE_DAMPING_MOMENT_COEFF_PROPULSIVE = auto()
+    TYPE_CORRECTIVE_MOMENT_COEFF = auto()
+
 # Mirrors info.openrocket.core.simulation.FlightEvent
 class FlightEvent(Enum):
     LAUNCH = auto()
@@ -89,3 +109,5 @@ class FlightEvent(Enum):
     ALTITUDE = auto()
     TUMBLE = auto()
     EXCEPTION = auto()
+    SIM_WARN = auto()
+    SIM_ABORT = auto()
