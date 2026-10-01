@@ -1,34 +1,171 @@
 # orhelper
-orhelper is a module which aims to facilitate interacting and scripting with OpenRocket from Python.
 
-## Prerequisites
-- OpenRocket version 22.02 or above.  Ideally it will be installed in
-  its default location, but running from non-default locations or from
-  the .jar file are also supported.
+[![PyPI](https://img.shields.io/pypi/v/orhelper)](https://pypi.org/project/orhelper/)
+[![Python](https://img.shields.io/pypi/pyversions/orhelper)](https://pypi.org/project/orhelper/)
+[![License: GPL v2](https://img.shields.io/badge/license-GPL%20v2-blue)](LICENSE)
+[![Tests](https://github.com/openrocket/orhelper/actions/workflows/tests.yml/badge.svg)](https://github.com/openrocket/orhelper/actions/workflows/tests.yml)
 
-- A compatible Java runtime: Java 17 for OpenRocket 23.09 and newer;
-  OpenRocket 22.02 also works with Java 11. Installed OpenRocket bundles
-  include their own runtime.
-  
-- Python >= 3.6
+**Script and automate [OpenRocket](https://openrocket.info) from Python.**
+Load a `.ork` file, tweak the rocket or launch conditions, run simulations, and
+get the results back as NumPy arrays: for parameter sweeps, optimisation, Monte
+Carlo landing-zone studies, or your own plots.
 
-- jpype1 >= 0.6.3
+<p align="center">
+  <img src="docs/img/simple_plot.png" alt="Altitude and vertical velocity of a simulated flight, with burnout and apogee annotated" width="520">
+  <br>
+  <em>Output of <a href="examples/simple_plot.py"><code>examples/simple_plot.py</code></a></em>
+</p>
 
-- numpy
+## Quickstart
 
-The examples may have additional prerequites, for instance lazy.py
-requires scipy and matplotlib
+1. **Install OpenRocket** from [openrocket.info/downloads](https://openrocket.info/downloads.html)
+   (22.02 or newer). The installer bundles the Java runtime that orhelper uses.
+2. **Install orhelper:**
+   ```bash
+   pip install orhelper
+   ```
+3. **Run a simulation** (this uses the sample rocket that ships with orhelper):
 
-## Installing
+   ```python
+   import numpy as np
 
-- Install orhelper from pip
-    ```bash
-    pip install orhelper
-    ```
+   import orhelper
+   from orhelper import FlightDataType
 
-- See `examples/` for usage examples
+   with orhelper.OpenRocketInstance(log_level="ERROR") as instance:
+       orh = orhelper.Helper(instance)
 
-- See [the OpenRocket wiki](https://github.com/openrocket/openrocket/wiki/Scripting-with-Python-and-JPype) for more info on usage and the examples 
+       doc = orh.load_doc(orhelper.sample_ork_path())  # or "/path/to/your.ork"
+       sim = doc.getSimulation(0)
+       orh.run_simulation(sim)
+
+       data = orh.get_timeseries(sim, [FlightDataType.TYPE_TIME,
+                                       FlightDataType.TYPE_ALTITUDE,
+                                       FlightDataType.TYPE_VELOCITY_TOTAL])
+
+       print(f"Apogee:       {np.max(data[FlightDataType.TYPE_ALTITUDE]):.0f} m")
+       print(f"Max velocity: {np.nanmax(data[FlightDataType.TYPE_VELOCITY_TOTAL]):.0f} m/s")
+       print(f"Flight time:  {data[FlightDataType.TYPE_TIME][-1]:.1f} s")
+   ```
+
+   ```text
+   Apogee:       51 m
+   Max velocity: 29 m/s
+   Flight time:  15.9 s
+   ```
+
+   (Exact numbers vary slightly from run to run, because `run_simulation`
+   randomizes the simulation's random seed.)
+
+   The complete script is [`examples/quickstart.py`](examples/quickstart.py).
+   If OpenRocket isn't in its default location, or it can't be found, pass the
+   jar explicitly: `OpenRocketInstance(jar="/path/to/OpenRocket.jar")`.
+
+## How it works
+
+orhelper starts OpenRocket's Java code inside your Python process using
+[JPype](https://jpype.readthedocs.io). It adds a small layer of helpers on top,
+and everything else is OpenRocket's own Java API.
+
+- **`OpenRocketInstance`** starts (and on exit shuts down) the JVM and
+  initialises OpenRocket. Use it as a context manager; everything that touches
+  OpenRocket must happen inside the `with` block.
+- **`Helper`** has the Python-friendly operations: `load_doc`, `save_doc`,
+  `run_simulation`, `get_timeseries`, `get_final_values`, `get_events`,
+  `get_component_named`.
+- **`FlightDataType`** and **`FlightEvent`** are Python enums for the variables
+  and events OpenRocket records. Pass members (or their names as strings) to the
+  helpers above.
+- **`AbstractSimulationListener`** lets you hook into a simulation from Python
+  (see [`examples/monte_carlo.py`](examples/monte_carlo.py)).
+- **Everything else is a raw Java object.** `load_doc` returns an
+  `OpenRocketDocument`, `doc.getSimulation(0)` a `Simulation`,
+  `sim.getOptions()` a `SimulationOptions`, and so on. Call their Java methods
+  directly (`getFoo()`, `setFoo(value)`). To find out what's available, browse
+  the [OpenRocket source](https://github.com/openrocket/openrocket) (the
+  `info.openrocket.core` package; in 22.02 and 23.09 it is `net.sf.openrocket`
+  instead) or use `dir(obj)` in a Python session.
+  Java methods take SI units, and angles are in **radians**.
+
+## Common tasks
+
+All snippets assume the `with orhelper.OpenRocketInstance() as instance:` block and
+`orh = orhelper.Helper(instance)` from the quickstart, and `doc`/`sim` loaded as there.
+
+**Change launch conditions** (angles in radians, speeds in m/s):
+
+```python
+opts = sim.getOptions()
+opts.setLaunchRodAngle(math.radians(5))
+opts.setLaunchRodDirection(math.radians(90))
+opts.setWindSpeedAverage(4.0)
+```
+
+**Modify a component**, for example override a mass:
+
+```python
+body = orh.get_component_named(sim.getRocket(), "Body tube")
+body.setMassOverridden(True)
+body.setOverrideMass(0.120)  # kg
+```
+
+**Get just the final value of a variable:**
+
+```python
+orh.get_final_values(sim, [FlightDataType.TYPE_POSITION_X])
+```
+
+**Save your changes:** `orh.save_doc("modified.ork", doc)`.
+
+**Multistage rockets:** `get_timeseries`, `get_final_values` and `get_events`
+take `branch_number` (0 is the sustainer; 1, 2, ... are booster branches).
+
+**Run Python code during a simulation** by subclassing
+`orhelper.AbstractSimulationListener` and passing instances via
+`run_simulation(sim, listeners=[...])`. Override only the hooks you need
+(`postStep`, `endSimulation`, ...); see `examples/monte_carlo.py`.
+
+## Examples
+
+Examples live in [`examples/`](examples/). Some need extra packages:
+`pip install matplotlib scipy` (or `pip install "orhelper[examples]"`).
+
+| Example | What it shows | Extra packages |
+|---|---|---|
+| [`quickstart.py`](examples/quickstart.py) | Run a simulation, print apogee, max velocity and events | none |
+| [`simple_plot.py`](examples/simple_plot.py) | Plot altitude and velocity with annotated events | matplotlib |
+| [`lazy.py`](examples/lazy.py) | Find the launch angle that minimises upwind drift with `scipy.optimize` | matplotlib, scipy |
+| [`monte_carlo.py`](examples/monte_carlo.py) | Randomise launch angle, wind and masses; custom listeners; landing-zone statistics | none |
+
+More background is on the
+[OpenRocket wiki](https://github.com/openrocket/openrocket/wiki/Scripting-with-Python-and-JPype).
+
+## Troubleshooting
+
+- **`SystemExit` / "…not found" when starting.** orhelper couldn't find OpenRocket
+  or its Java runtime. These failures currently call `sys.exit`, so they also
+  end notebooks and are not caught by `except Exception`. Pass `jar="…/OpenRocket.jar"`
+  (and `jvm="…/libjvm.*"` if no Java runtime is found). The default install
+  locations it looks in are `~/OpenRocket` (Linux),
+  `/Applications/OpenRocket.app` (macOS) and `%PROGRAMFILES%\OpenRocket` (Windows).
+- **`OSError: JVM cannot be restarted`.** JPype starts the JVM once per Python
+  process, so a second `OpenRocketInstance` (even after the first one closed) fails.
+  Do all OpenRocket work in a single `with` block,
+  and use a new process to switch OpenRocket versions (for example with
+  `multiprocessing` using the `spawn` start method).
+- **Wrong Java version.** OpenRocket 23.09 and newer need Java 17; 22.02 also
+  works with Java 11. The OpenRocket installers bundle a suitable runtime.
+- **JVM fails to load on Apple Silicon or with a mixed 32/64-bit setup.** The Python
+  interpreter and the Java runtime must have the same CPU architecture.
+- **A result contains `nan`.** Some series are `nan` at the first time step (for
+  example velocities at t=0). Use `np.nanmax`/`np.nanmin`, or drop the first sample.
+- **Lots of log output.** Pass `log_level="ERROR"` to silence OpenRocket's Java logging.
+  (Python-side `INFO` messages from orhelper itself are still printed; this is a
+  known issue.)
+- **`AttributeError: … not available in this OpenRocket version`.** You asked for a
+  `FlightDataType` introduced after the OpenRocket version you're running.
+- **Showing plots.** Leave the `with OpenRocketInstance()` block before calling
+  `plt.show()`, so the JVM is shut down first, as `simple_plot.py` does.
 
 ## OpenRocket compatibility
 
@@ -48,7 +185,7 @@ import orhelper
 
 with orhelper.OpenRocketInstance(jar="/path/to/OpenRocket.jar") as instance:
     helper = orhelper.Helper(instance)
-    document = helper.load_doc("examples/simple.ork")
+    document = helper.load_doc(orhelper.sample_ork_path())
     simulation = document.getSimulation(0)
     helper.run_simulation(simulation)
     data = helper.get_timeseries(simulation, [orhelper.FlightDataType.TYPE_ALTITUDE])
@@ -70,7 +207,13 @@ values are preserved.
 For multistage rockets, `get_events(simulation, branch_number=1)` selects a booster
 branch, matching the branch selection in `get_timeseries()` and `get_final_values()`.
 
-## Testing
+## Development and testing
+
+```bash
+git clone https://github.com/openrocket/orhelper.git
+cd orhelper
+pip install -e ".[examples]"
+```
 
 Run the Python regression tests with:
 
@@ -89,6 +232,12 @@ OPENROCKET_JAR=/path/to/OpenRocket.jar python -m unittest discover -s tests -v
 
 These tests check every built-in flight-data type and event, actual simulation
 results, saving and reloading, listener cloning, and multistage branches.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for more, and [CHANGELOG.md](CHANGELOG.md)
+for release notes.
+
+## License
+
+orhelper is released under the [GNU General Public License v2](LICENSE).
 
 ## Credits
 - Richard Graham for the original script: [Source](https://sourceforge.net/p/openrocket/mailman/openrocket-devel/thread/4F17AA0C.1040002@rdg.cc/)
