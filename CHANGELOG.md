@@ -3,9 +3,21 @@
 Notable changes to orhelper. Releases before this file was started are listed
 on the [tags page](https://github.com/openrocket/orhelper/tags) and in the git history.
 
-## Unreleased
+## 0.2.0 - 2026-10-01
+
+Versions 0.1.4 to 0.1.6 appeared in `setup.py` but were never published; the latest release on
+PyPI before this one is 0.1.3, so this release includes all changes since then.
+
+> **Upgrading from 0.1.3:** startup problems now raise exceptions instead of calling `sys.exit()`,
+> misspelt keyword arguments to `OpenRocketInstance` are errors, and Python 3.9 or newer and
+> JPype 1.3 or newer are required. See *Changed* below.
 
 ### Added
+- Seven new examples: `events_and_stats.py`, `edit_and_save.py`, `parameter_sweep.py`,
+  `multistage.py`, `custom_listener.py`, `parallel_runs.py` and `custom_setup.py`, and a guided
+  notebook, `examples/tour.ipynb`.
+- `tests/test_examples.py` runs every script in `examples/` against a real OpenRocket jar
+  (with `OPENROCKET_JAR`), also in CI, so the examples stay working across OpenRocket versions.
 - Exceptions for startup problems: `OrHelperError` (a `RuntimeError`) and its
   subclasses `OpenRocketNotFoundError`, `JVMNotFoundError` and `JVMAlreadyStartedError`.
   Messages say what was searched and how to fix it.
@@ -40,6 +52,12 @@ on the [tags page](https://github.com/openrocket/orhelper/tags) and in the git h
 - `examples/simple.ork` moved to `orhelper/data/simple.ork`.
 
 ### Fixed
+- `examples/lazy.py` crashed with `TypeError: only 0-dimensional arrays can be converted to Python
+  scalars` on NumPy 2 (scipy's `fmin` passes a one-element array where a number was expected).
+- `examples/monte_carlo.py` overstated the landing distance (by 41% at the sample rocket's latitude
+  of 45 degrees) because it converted degrees of longitude to metres without the `cos(latitude)`
+  factor, and gave the wrong bearing for rockets landing west of the pad. It now matches the
+  positions OpenRocket reports.
 - The integration test comparing `get_final_values` with the last time-series sample
   failed when that sample is NaN, as it is for motor mass in some OpenRocket
   development builds; it now compares NaN-aware.

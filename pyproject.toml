@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "orhelper"
-version = "0.1.6"
+version = "0.2.0"
 description = "Script and automate OpenRocket simulations from Python."
 readme = "README.md"
 license = { text = "GPL-2.0-only" }

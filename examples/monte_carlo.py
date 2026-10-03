@@ -1,3 +1,14 @@
+"""Monte Carlo study of the landing zone: randomise the launch and the rocket, run many simulations.
+
+Each run draws the launch rod angle and direction, the wind speed and the mass of two components
+at random, and drops the rocket from a random starting altitude using a custom simulation listener
+(``AirStart``). A second listener (``LandingPoint``) records where the rocket lands. The script prints
+the mean landing distance and bearing with their standard deviations.
+
+The distance and bearing use a flat-earth approximation, so the simulation must use OpenRocket's
+"flat" geodetic computation (the default for the sample rocket). Component names ('Nose cone', 'Body
+tube') are those of the sample rocket: change them to match your own.
+"""
 import numpy as np
 import orhelper
 from random import gauss
@@ -44,7 +55,7 @@ class LandingPoints(list):
     def print_stats(self):
         print(
             'Rocket landing zone %3.2f m +- %3.2f m bearing %3.2f deg +- %3.4f deg from launch site. Based on %i simulations.' % \
-            (np.mean(self.ranges), np.std(self.ranges), np.degrees(np.mean(self.bearings)),
+            (np.mean(self.ranges), np.std(self.ranges), np.degrees(np.mean(self.bearings)) % 360,
              np.degrees(np.std(self.bearings)), len(self)))
 
 
@@ -77,20 +88,29 @@ class AirStart(orhelper.AbstractSimulationListener):
         status.setRocketPosition(position)
 
 
+# OpenRocket's flat-earth conversion from degrees to metres. A degree of longitude is this long at the
+# equator and shrinks with the cosine of the latitude.
 METERS_PER_DEGREE_LATITUDE = 111325
 METERS_PER_DEGREE_LONGITUDE_EQUATOR = 111050
 
 
+def flat_offsets(start, end):
+    """Return how far `end` is north and east of `start`, in metres (flat-earth approximation)."""
+    north = (end.getLatitudeDeg() - start.getLatitudeDeg()) * METERS_PER_DEGREE_LATITUDE
+    east = ((end.getLongitudeDeg() - start.getLongitudeDeg()) * METERS_PER_DEGREE_LONGITUDE_EQUATOR
+            * math.cos(math.radians(start.getLatitudeDeg())))
+    return north, east
+
+
 def range_flat(start, end):
-    dy = (end.getLatitudeDeg() - start.getLatitudeDeg()) * METERS_PER_DEGREE_LATITUDE
-    dx = (end.getLongitudeDeg() - start.getLongitudeDeg()) * METERS_PER_DEGREE_LONGITUDE_EQUATOR
-    return math.sqrt(dy * dy + dx * dx)
+    north, east = flat_offsets(start, end)
+    return math.hypot(north, east)
 
 
 def bearing_flat(start, end):
-    dy = (end.getLatitudeDeg() - start.getLatitudeDeg()) * METERS_PER_DEGREE_LATITUDE
-    dx = (end.getLongitudeDeg() - start.getLongitudeDeg()) * METERS_PER_DEGREE_LONGITUDE_EQUATOR
-    return math.pi / 2 - math.atan(dy / dx)
+    """Bearing of `end` from `start` in radians, measured clockwise from north."""
+    north, east = flat_offsets(start, end)
+    return math.atan2(east, north)
 
 
 if __name__ == '__main__':
