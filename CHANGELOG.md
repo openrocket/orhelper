@@ -52,6 +52,8 @@ PyPI before this one is 0.1.3, so this release includes all changes since then.
 - `examples/simple.ork` moved to `orhelper/data/simple.ork`.
 
 ### Fixed
+- `examples/lazy.py` crashed with `TypeError: only 0-dimensional arrays can be converted to Python
+  scalars` on NumPy 2 (scipy's `fmin` passes a one-element array where a number was expected).
 - `examples/monte_carlo.py` overstated the landing distance (by 41% at the sample rocket's latitude
   of 45 degrees) because it converted degrees of longitude to metres without the `cos(latitude)`
   factor, and gave the wrong bearing for rockets landing west of the pad. It now matches the

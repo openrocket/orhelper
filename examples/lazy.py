@@ -28,8 +28,8 @@ with orhelper.OpenRocketInstance() as instance:
         return orh.get_timeseries(sim, [FlightDataType.TYPE_ALTITUDE, FlightDataType.TYPE_POSITION_X])
 
 
-    def to_min(ang, sim):
-        data = simulate_at_angle(ang, sim)
+    def to_min(angle, sim):
+        data = simulate_at_angle(angle[0], sim)  # fmin passes the parameters as an array, even for one
         half_len = len(data[FlightDataType.TYPE_ALTITUDE]) // 2  # Don't want the launch
         min_upwind_index = np.abs(data[FlightDataType.TYPE_ALTITUDE][half_len:]).argmin()
         min_upwind_position = data[FlightDataType.TYPE_POSITION_X][half_len:][min_upwind_index]  # X is upwind for simple.ork
