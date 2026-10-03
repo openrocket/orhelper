@@ -100,42 +100,68 @@ def _installed_jvm(orhome: Path) -> Optional[Path]:
 
 
 class OpenRocketInstance:
-    """ This class is designed to be called using the 'with' construct. This
-        will ensure that no matter what happens within that context, the 
-        JVM will always be shutdown.
+    """Starts OpenRocket (a Java virtual machine) for the duration of a `with` block.
 
-        JPype can start the JVM only once per Python process, so keep all
-        OpenRocket work inside a single 'with' block.
+    Everything that talks to OpenRocket has to happen inside the block; leaving it shuts the JVM down.
+    Java can be started only **once per Python process**, so keep all OpenRocket work in a single block
+    (a second block, even after the first one ended, raises [`JVMAlreadyStartedError`][orhelper.JVMAlreadyStartedError]).
+
+    By default the installed OpenRocket is used. Pass `jar`, `jvm` or `orhome` to choose another one.
+
+    Example:
+        ```python
+        import orhelper
+
+        with orhelper.OpenRocketInstance() as instance:
+            helper = orhelper.Helper(instance)
+            ...
+        ```
+
+    Attributes:
+        jar (pathlib.Path): The OpenRocket jar that is used.
+        jvm (pathlib.Path): The Java virtual machine library that is used.
+        jvm_args (tuple[str, ...]): Extra arguments given to the JVM.
+        or_log_level (OrLogLevel): The log level.
+        started (bool): True while the JVM is running.
+        openrocket_core: The Java package that holds OpenRocket's core classes, for example
+            `instance.openrocket_core.simulation.FlightDataType`. This is `info.openrocket.core`, or
+            `net.sf.openrocket` in OpenRocket 22.02 and 23.09. `None` until the JVM has started.
+        openrocket_swing: The Java package with OpenRocket's user interface classes (the same package as
+            `openrocket_core` in 22.02 and 23.09). `None` until the JVM has started.
     """
 
-    def __init__(self, jar_path: str = None, log_level: Union[OrLogLevel, str] = OrLogLevel.INFO, **kwargs):
-        """ keyword arguments:
-            orhome: location of installed OpenRocket.  Default is
-                platform-dependant default installation location.
-            jar: location of OpenRocket .jar file.  Default is
-                location in installed OpenRocket.
-            jvm: location of Java Virtual Machine.  Default is
-                location in installed OpenRocket.
-            jvm_args: list of extra arguments for the JVM, for example
-                ['-Xmx2g'] or ['-Djava.awt.headless=true'].
-            loglevel: log level.  Allowed values (case-insensitive) are 'OFF',
-                'ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE', and 'ALL'. Default is 'INFO'.
-                This sets the level of OpenRocket's own (Java) logging, and of the
-                'orhelper' Python logger. orhelper does not configure Python logging
-                handlers; use logging.basicConfig() to see its messages.
-        legacy positional arguments:
-            jar_path: location of OpenRocket .jar file, if not specified by
-                keyword argument above. An explicit path takes precedence over
-                the installed jar. Without either, try the installation, then
-                CLASSPATH or 'OpenRocket.jar'.
-            log_level can be either 'OFF', 'ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE' and 'ALL',
-                if not specified by keyword argument
+    def __init__(self, jar_path: Optional[Union[str, os.PathLike]] = None,
+                 log_level: Union[OrLogLevel, str] = OrLogLevel.INFO, **kwargs):
+        """Prepare to start OpenRocket. The JVM itself starts when the `with` block is entered.
+
+        Where to find OpenRocket is decided in this order: an explicit `jar` (or `jar_path`), then the
+        installation given by `orhome`, then the default installation location of your platform
+        (`~/OpenRocket` on Linux, `/Applications/OpenRocket.app` on macOS, `%PROGRAMFILES%\\OpenRocket` on
+        Windows), then the `CLASSPATH` environment variable or `./OpenRocket.jar`. The Java runtime is taken
+        from the installation when there is one, else the system default.
+
+        Args:
+            jar_path: Location of the OpenRocket jar file; the same as the `jar` keyword argument (which wins
+                if both are given). An explicit jar always takes precedence over the installed one.
+            log_level: Log level, as an [`OrLogLevel`][orhelper.OrLogLevel] or its name (case-insensitive):
+                `OFF`, `ERROR`, `WARN`, `INFO` (the default), `DEBUG`, `TRACE` or `ALL`. This sets the
+                level of OpenRocket's own Java logging and of the `orhelper` Python logger. orhelper does not
+                configure Python logging handlers; call `logging.basicConfig()` to see its messages.
+            **kwargs: Keyword arguments, all optional:
+
+                - `orhome`: location of an installed OpenRocket.
+                - `jar`: location of the OpenRocket jar file.
+                - `jvm`: location of the Java virtual machine library (`libjvm.so`, `libjvm.dylib` or
+                  `jvm.dll`).
+                - `jvm_args`: list of extra arguments for the JVM, for example `["-Xmx2g"]` or
+                  `["-Djava.awt.headless=true"]`.
+                - `loglevel`: the same as `log_level`; takes precedence over it.
 
         Raises:
-            TypeError: for unknown keyword arguments or arguments of the wrong type.
-            ValueError: for an unknown log level.
-            OpenRocketNotFoundError: if the OpenRocket installation or jar can't be found.
-            JVMNotFoundError: if no Java Virtual Machine can be found.
+            TypeError: For an unknown keyword argument or an argument of the wrong type.
+            ValueError: For an unknown log level.
+            OpenRocketNotFoundError: If the installation or the jar can't be found.
+            JVMNotFoundError: If no Java virtual machine can be found.
         """
 
         unknown = sorted(set(kwargs) - set(_KEYWORD_ARGUMENTS))
@@ -224,6 +250,15 @@ class OpenRocketInstance:
         self.started = False
 
     def __enter__(self):
+        """Start the JVM and initialise OpenRocket.
+
+        Returns:
+            This instance.
+
+        Raises:
+            JVMAlreadyStartedError: If a JVM is running in this process, or one was started and shut down
+                before: JPype can't restart it.
+        """
         if jpype.isJVMStarted():
             raise JVMAlreadyStartedError(
                 "A JVM is already running in this Python process. Use a single 'with OpenRocketInstance()' "
@@ -304,6 +339,7 @@ class OpenRocketInstance:
             window.dispose()
 
     def __exit__(self, ex, value, tb):
+        """Shut the JVM down. An exception raised in the `with` block is logged and then propagates."""
 
         self._dispose_windows()
 
@@ -323,8 +359,47 @@ class OpenRocketInstance:
 
 
 class AbstractSimulationListener:
-    """ This is a python implementation of openrocket.simulation.listeners.AbstractSimulationListener.
-        Subclasses of this are suitable for passing to helper.run_simulation.
+    """Base class for Python code that runs *during* an OpenRocket simulation.
+
+    Subclass it, override the hooks you need and pass instances to
+    [`Helper.run_simulation`][orhelper.Helper.run_simulation]. This is a Python version of OpenRocket's
+    `AbstractSimulationListener`, so the hook names are the Java ones (camelCase) and the arguments are
+    **Java objects**; `status`, for example, is a `SimulationStatus`. Every hook does nothing by default,
+    so the simulation is only affected by the hooks you override.
+
+    There are three groups of hooks:
+
+    * **Lifecycle hooks:** [`startSimulation`][orhelper.AbstractSimulationListener.startSimulation],
+      [`endSimulation`][orhelper.AbstractSimulationListener.endSimulation], their `...Branch` versions,
+      [`preStep`][orhelper.AbstractSimulationListener.preStep] and
+      [`postStep`][orhelper.AbstractSimulationListener.postStep].
+    * **Event hooks** (`addFlightEvent`, `handleFlightEvent`, `motorIgnition`, `recoveryDeviceDeployment`):
+      return `True` to let things happen normally (the default) or `False` to prevent it.
+    * **Computation hooks** (`pre...` and `post...`): called around the models OpenRocket evaluates in each
+      step. Return `None` (for the hooks that return a number: `float("nan")`) to leave the simulation
+      alone, which is the default. Return a value of the type OpenRocket expects to replace the result:
+      the `pre...` hooks replace the value before it is computed, the `post...` hooks replace the value that
+      was computed.
+
+    Warning: Keep results in a list or dict, not in a number
+        OpenRocket doesn't use the object you pass in: it clones it (shallow copy) for the simulation.
+        Lists and dicts created in `__init__` are shared with the copy, so you can read them afterwards.
+        A number or string that a hook assigns (`self.count += 1`) is changed on the copy only, and the
+        object you hold still has the old value.
+
+    Example:
+        ```python
+        class AltitudeTracker(orhelper.AbstractSimulationListener):
+            def __init__(self):
+                self.altitudes = []          # shared with the copy that OpenRocket runs
+
+            def postStep(self, status):
+                self.altitudes.append(status.getRocketPosition().z)
+
+        tracker = AltitudeTracker()
+        helper.run_simulation(simulation, listeners=[tracker])
+        print(max(tracker.altitudes))
+        ```
     """
 
     def __str__(self):
@@ -340,89 +415,188 @@ class AbstractSimulationListener:
 
     # SimulationListener
     def startSimulation(self, status) -> None:
-        pass
+        """Called when the simulation starts.
+
+        Args:
+            status: The Java `SimulationStatus`. You can change it, for example to start the rocket at another
+                position.
+        """
 
     def endSimulation(self, status, simulation_exception) -> None:
-        pass
+        """Called when the simulation ends, normally or because of an error.
+
+        Args:
+            status: The Java `SimulationStatus`.
+            simulation_exception: The Java `SimulationException` that ended the simulation, or `None`
+                if it ended normally.
+        """
 
     def startSimulationBranch(self, status) ->  None :
-        pass
+        """Called when a branch starts: the sustainer, and each booster created at stage separation.
+
+        This hook exists only in OpenRocket 26.xx; in 22.02, 23.09 and 24.12 it is never called.
+
+        Args:
+            status: The Java `SimulationStatus` of the branch.
+        """
 
     def endSimulationBranch(self, status, simulation_exception) -> None:
-        pass
+        """Called when a branch ends, normally or because of an error. Like `startSimulationBranch`, only
+        OpenRocket 26.xx calls it.
+
+        Args:
+            status: The Java `SimulationStatus` of the branch.
+            simulation_exception: The Java `SimulationException` that ended the branch, or `None`.
+        """
 
     def preStep(self, status) -> bool:
+        """Called before every simulation step.
+
+        Args:
+            status: The Java `SimulationStatus`.
+
+        Returns:
+            `True` to take the step (the default), `False` to skip it. A skipped step does not advance the
+            simulation, so don't return `False` on every call.
+        """
         return True
 
     def postStep(self, status) -> None:
-        pass
+        """Called after every simulation step, also when `preStep` skipped it.
+
+        Args:
+            status: The Java `SimulationStatus`, for example `status.getSimulationTime()` or
+                `status.getRocketPosition()`.
+        """
 
     def isSystemListener(self) -> bool:
+        """Whether this is one of OpenRocket's own listeners. Leave this as `False` for your own code."""
         return False
 
     # SimulationEventListener
     def addFlightEvent(self, status, flight_event) -> bool:
+        """Called before an event is added to the event queue.
+
+        Args:
+            status: The Java `SimulationStatus`.
+            flight_event: The Java `FlightEvent` that is about to be added.
+
+        Returns:
+            `True` to add the event (the default), `False` to leave it out.
+        """
         return True
 
     def handleFlightEvent(self, status, flight_event) -> bool:
+        """Called before an event is handled.
+
+        Args:
+            status: The Java `SimulationStatus`.
+            flight_event: The Java `FlightEvent` that is taking place.
+
+        Returns:
+            `True` to handle the event (the default), `False` to ignore it.
+        """
         return True
 
     def motorIgnition(self, status, motor_id, motor_mount, motor_instance) -> bool:
+        """Called when a motor is about to ignite.
+
+        Args:
+            status: The Java `SimulationStatus`.
+            motor_id: The id of the motor configuration.
+            motor_mount: The Java motor mount that holds the motor.
+            motor_instance: The motor that is being ignited.
+
+        Returns:
+            `True` to ignite the motor (the default), `False` to prevent it.
+        """
         return True
 
     def recoveryDeviceDeployment(self, status, recovery_device) -> bool:
+        """Called when a recovery device (a parachute, for example) is about to deploy.
+
+        Args:
+            status: The Java `SimulationStatus`.
+            recovery_device: The Java recovery device.
+
+        Returns:
+            `True` to deploy it (the default), `False` to prevent it.
+        """
         return True
 
     # SimulationComputationListener
+    # The pre... hooks replace a value before OpenRocket computes it; the post... hooks replace the computed
+    # value. None (or nan for numbers) means: leave it alone.
     def preAccelerationCalculation(self, status):
+        """Replace the acceleration before it is computed. Return a Java `AccelerationData`, or `None`."""
         return None
 
     def preAerodynamicCalculation(self, status):
+        """Replace the aerodynamic forces before they are computed. Return a Java `AerodynamicForces`, or `None`."""
         return None
 
     def preAtmosphericModel(self, status):
+        """Replace the atmospheric conditions before they are computed. Return Java `AtmosphericConditions`, or `None`."""
         return None
 
     def preFlightConditions(self, status):
+        """Replace the flight conditions before they are computed. Return a Java `FlightConditions`, or `None`."""
         return None
 
     def preGravityModel(self, status):
+        """Replace the gravitational acceleration (m/s²) before it is computed. Return a number, or `nan`."""
         return float("nan")
 
     def preMassCalculation(self, status):
+        """Replace the mass properties before they are computed. Return a Java `RigidBody`, or `None`."""
         return None
 
     def preSimpleThrustCalculation(self, status):
+        """Replace the thrust (N) before it is computed. Return a number, or `nan`."""
         return float("nan")
 
     def preWindModel(self, status):
+        """Replace the wind velocity before it is computed. Return a Java `Coordinate` (m/s), or `None`.
+
+        For example, `return instance.openrocket_core.util.Coordinate(10.0, 0.0, 0.0)` gives a constant
+        10 m/s wind along the x axis.
+        """
         return None
 
     def postAccelerationCalculation(self, status, acceleration_data):
+        """Replace the computed acceleration. Return a Java `AccelerationData`, or `None` to keep it."""
         return None
 
     def postAerodynamicCalculation(self, status, aerodynamic_forces):
+        """Replace the computed aerodynamic forces. Return a Java `AerodynamicForces`, or `None` to keep them."""
         return None
 
     def postAtmosphericModel(self, status, atmospheric_conditions):
+        """Replace the computed atmospheric conditions. Return Java `AtmosphericConditions`, or `None`."""
         return None
 
     def postFlightConditions(self, status, flight_conditions):
+        """Replace the computed flight conditions. Return a Java `FlightConditions`, or `None` to keep them."""
         return None
 
     def postGravityModel(self, status, gravity):
+        """Replace the computed gravitational acceleration (m/s²). Return a number, or `nan` to keep it."""
         return float("nan")
 
     def postMassCalculation(self, status, mass_data):
+        """Replace the computed mass properties. Return a Java `RigidBody`, or `None` to keep them."""
         return None
 
     def postSimpleThrustCalculation(self, status, thrust):
+        """Replace the computed thrust (N). Return a number, or `nan` to keep it."""
         return float("nan")
 
     def postWindModel(self, status, wind):
+        """Replace the computed wind velocity. Return a Java `Coordinate` (m/s), or `None` to keep it."""
         return None
 
     def clone(self):
+        """Called by OpenRocket to copy the listener. This is a shallow copy; see the warning above."""
         core, _ = _get_openrocket_packages()
         return jpype.JProxy((
             core.simulation.listeners.SimulationListener,
@@ -433,37 +607,95 @@ class AbstractSimulationListener:
 
 
 class Helper:
-    """ This class contains a variety of useful helper functions and wrapper for using
-        openrocket via jpype. These are intended to take care of some of the more
-        cumbersome aspects of calling methods, or provide more 'pythonic' data structures
-        for general use.
+    """Python-friendly operations on OpenRocket documents and simulations.
+
+    Load and save `.ork` files, run simulations (optionally with Python
+    [listeners][orhelper.AbstractSimulationListener]), and read the results as NumPy arrays.
+    Everything else in OpenRocket is reached by calling the Java objects that these methods return and
+    accept: documents, simulations, rockets and components are plain
+    [JPype](https://jpype.readthedocs.io) Java objects.
+
+    Example:
+        ```python
+        with orhelper.OpenRocketInstance() as instance:
+            helper = orhelper.Helper(instance)
+            document = helper.load_doc("my_rocket.ork")
+            simulation = document.getSimulation(0)
+            helper.run_simulation(simulation)
+            data = helper.get_timeseries(simulation, [orhelper.FlightDataType.TYPE_ALTITUDE])
+        ```
+
+    Attributes:
+        openrocket_core: The Java package with OpenRocket's core classes (see
+            [`OpenRocketInstance`][orhelper.OpenRocketInstance]).
+        openrocket_swing: The Java package with OpenRocket's user interface classes.
     """
 
     def __init__(self, open_rocket_instance: OpenRocketInstance):
+        """Create a helper for a started OpenRocket.
+
+        Args:
+            open_rocket_instance: The instance from `with OpenRocketInstance() as instance`.
+
+        Raises:
+            OrHelperError: If the instance has not been started, that is, when it is used outside its
+                `with` block.
+        """
         if not open_rocket_instance.started:
             raise OrHelperError("OpenRocketInstance not yet started; use it inside a 'with OpenRocketInstance() as instance:' block")
 
         self.openrocket_core = open_rocket_instance.openrocket_core
         self.openrocket_swing = open_rocket_instance.openrocket_swing
 
-    def load_doc(self, or_filename):
-        """ Loads a .ork file and returns the corresponding openrocket document """
+    def load_doc(self, or_filename: Union[str, os.PathLike]):
+        """Load an OpenRocket (`.ork`) file.
 
-        or_java_file = jpype.java.io.File(or_filename)
+        Args:
+            or_filename: Path of the file.
+
+        Returns:
+            The Java `OpenRocketDocument`. Use `document.getRocket()` for the rocket and
+            `document.getSimulation(0)` (or `getSimulations()`) for its simulations.
+
+        Raises:
+            info.openrocket.core.file.RocketLoadException: (a Java exception) If the file is missing or can't
+                be read.
+        """
+
+        or_java_file = jpype.java.io.File(os.fspath(or_filename))
         loader = self.openrocket_core.file.GeneralRocketLoader(or_java_file)
         doc = loader.load()
         return doc
 
-    def save_doc(self, or_filename, doc):
-        """ Saves an openrocket document to a .ork file """
-        
-        or_java_file = jpype.java.io.File(or_filename)
+    def save_doc(self, or_filename: Union[str, os.PathLike], doc):
+        """Save an OpenRocket document, with the changes you made to it, to an `.ork` file.
+
+        Args:
+            or_filename: Path of the file to write. It is overwritten if it exists.
+            doc: The Java `OpenRocketDocument`, as returned by [`load_doc`][orhelper.Helper.load_doc].
+        """
+
+        or_java_file = jpype.java.io.File(os.fspath(or_filename))
         saver = self.openrocket_core.file.GeneralRocketSaver()
         saver.save(or_java_file, doc)
 
-    def run_simulation(self, sim, listeners: List[AbstractSimulationListener] = None):
-        """ This is a wrapper to the Simulation.simulate() for running a simulation
-            The optional listeners parameter is a sequence of objects which extend orh.AbstractSimulationListener.
+    def run_simulation(self, sim, listeners: Optional[Iterable[AbstractSimulationListener]] = None):
+        """Run a simulation. This wraps Java's `Simulation.simulate()`.
+
+        The results are stored in the simulation; read them with
+        [`get_timeseries`][orhelper.Helper.get_timeseries],
+        [`get_final_values`][orhelper.Helper.get_final_values] and
+        [`get_events`][orhelper.Helper.get_events], or from Java with `sim.getSimulatedData()`.
+
+        Note:
+            Each run starts by drawing a new random seed (`sim.getOptions().randomizeSeed()`), so repeated
+            runs of identical settings give slightly different results when turbulence is on. This also
+            changes the seed stored in the simulation's options.
+
+        Args:
+            sim: The Java `Simulation`, for example `document.getSimulation(0)`.
+            listeners: Optional [`AbstractSimulationListener`][orhelper.AbstractSimulationListener]
+                instances to call during the simulation.
         """
 
         if listeners is None:
@@ -489,10 +721,20 @@ class Helper:
         sim.getOptions().randomizeSeed()  # Need to do this otherwise exact same numbers will be generated for each identical run
         sim.simulate(listener_array)
 
-    def translate_flight_data_type(self, flight_data_type:Union[FlightDataType, str]):
-        """Resolve a variable available in the loaded OpenRocket version.
+    def translate_flight_data_type(self, flight_data_type: Union[FlightDataType, str]):
+        """Look up the Java flight data type of the OpenRocket version that is running.
 
-        TYPE_PROPELLANT_MASS is kept as a legacy name for TYPE_MOTOR_MASS.
+        `TYPE_PROPELLANT_MASS` is a legacy name of `TYPE_MOTOR_MASS`; either works in every version.
+
+        Args:
+            flight_data_type: A [`FlightDataType`][orhelper.FlightDataType] member or its name.
+
+        Returns:
+            The Java `FlightDataType` constant.
+
+        Raises:
+            TypeError: If the argument is neither a `FlightDataType` nor a string.
+            AttributeError: If this OpenRocket version doesn't have the variable.
         """
         if isinstance(flight_data_type, FlightDataType):
             name = flight_data_type.name
@@ -516,14 +758,24 @@ class Helper:
             ) from None
 
     def get_timeseries(self, simulation, variables: Iterable[Union[FlightDataType, str]], branch_number=0) \
-            -> Dict[Union[FlightDataType, str], np.array]:
-        """
-        Gets a dictionary of timeseries data (as numpy arrays) from a simulation given specific variable names.
+            -> Dict[Union[FlightDataType, str], np.ndarray]:
+        """Get the values of variables at every time step of a simulation.
 
-        :param simulation: An openrocket simulation object.
-        :param variables: A sequence of FlightDataType or strings representing the desired variables
-        :param branch_number:
-        :return:
+        The values are in SI units (see [Flight data variables](flight-data.md)). Some
+        variables are `nan` at some time steps, for example at the first one, so use `numpy.nanmax` and
+        friends for statistics. Request [`TYPE_TIME`][orhelper.FlightDataType] to get the matching times.
+
+        Args:
+            simulation: The Java `Simulation`, after [`run_simulation`][orhelper.Helper.run_simulation].
+            variables: The [`FlightDataType`][orhelper.FlightDataType] members, or their names, to get.
+            branch_number: The flight branch to read: 0 is the sustainer, 1 and up are boosters.
+
+        Returns:
+            A dictionary with one NumPy array per variable, under the same key you asked with.
+
+        Raises:
+            AttributeError: If a variable doesn't exist in this OpenRocket version.
+            java.lang.IndexOutOfBoundsException: (a Java exception) If the simulation has no such branch.
         """
 
         branch = simulation.getSimulatedData().getBranch(branch_number)
@@ -535,16 +787,21 @@ class Helper:
 
     def get_final_values(self, simulation, variables: Iterable[Union[FlightDataType, str]], branch_number=0) \
             -> Dict[Union[FlightDataType, str], float]:
-        """
-        Gets the final value in the time series from a simulation given variable names.
+        """Get the last value of variables in a simulation, for example where the rocket landed.
 
-        This is the last sample of the series, which can be NaN for variables that are
-        not recorded on the last data point (this depends on the OpenRocket version).
+        This is the last sample of the time series, which can be `nan` for variables that are not
+        recorded on the last data point (this depends on the OpenRocket version).
 
-        :param simulation: An openrocket simulation object.
-        :param variables: A sequence of FlightDataType or strings representing the desired variables
-        :param branch_number: Flight branch to read; 0 is the sustainer, 1, 2, ... are booster branches.
-        :return: Dictionary mapping each requested variable to its final value.
+        Args:
+            simulation: The Java `Simulation`, after [`run_simulation`][orhelper.Helper.run_simulation].
+            variables: The [`FlightDataType`][orhelper.FlightDataType] members, or their names, to get.
+            branch_number: The flight branch to read: 0 is the sustainer, 1 and up are boosters.
+
+        Returns:
+            A dictionary that maps each variable to its final value, in SI units.
+
+        Raises:
+            AttributeError: If a variable doesn't exist in this OpenRocket version.
         """
 
         branch = simulation.getSimulatedData().getBranch(branch_number)
@@ -555,13 +812,28 @@ class Helper:
         return output
 
     def translate_flight_event(self, flight_event) -> FlightEvent:
+        """Convert a Java `FlightEvent.Type` to the [`FlightEvent`][orhelper.FlightEvent] enum.
+
+        Raises:
+            KeyError: If the event type is not in the `FlightEvent` enum, for example one added by a newer
+                OpenRocket.
+        """
         # Resolve only this event; older releases may lack newer Java constants.
         return FlightEvent[str(flight_event.name())]
 
     def get_events(self, simulation, branch_number=0) -> Dict[FlightEvent, List[float]]:
-        """Returns a dictionary of all the flight events in a given simulation.
-           Key is FlightEvent and value is a list of all the times at which the event occurs.
-           branch_number selects the sustainer (0 by default) or a booster branch.
+        """Get the events that happened during a simulated flight, and when.
+
+        Events that the [`FlightEvent`][orhelper.FlightEvent] enum doesn't know, from a newer OpenRocket, are
+        skipped with a warning in the log.
+
+        Args:
+            simulation: The Java `Simulation`, after [`run_simulation`][orhelper.Helper.run_simulation].
+            branch_number: The flight branch to read: 0 is the sustainer, 1 and up are boosters.
+
+        Returns:
+            A dictionary that maps each [`FlightEvent`][orhelper.FlightEvent] that occurred to the list of
+            times, in seconds, at which it did. Most events occur once.
         """
         branch = simulation.getSimulatedData().getBranch(branch_number)
 
@@ -581,9 +853,19 @@ class Helper:
         return output
 
     def get_component_named(self, root, name):
-        """ Finds and returns the first rocket component with the given name.
-            Requires a root RocketComponent, usually this will be a RocketComponent.rocket instance.
-            Raises a ValueError if no component found.
+        """Find a part of the rocket by its name.
+
+        Args:
+            root: The Java component to search from, usually the rocket: `document.getRocket()`. Its
+                sub-components are searched too.
+            name: The name of the component, as shown in OpenRocket.
+
+        Returns:
+            The first Java `RocketComponent` with that name. Change it with its Java setters, for
+            example `setLength(...)` or `setOverrideMass(...)`.
+
+        Raises:
+            ValueError: If there is no component with that name.
         """
 
         for component in JIterator(root):
@@ -593,10 +875,21 @@ class Helper:
 
 
 class JIterator:
-    """This class is a wrapper for java iterators to allow them to be used as python iterators"""
+    """Wraps a Java rocket component so that you can walk its tree of sub-components in a `for` loop.
+
+    Example:
+        ```python
+        for component in orhelper.JIterator(document.getRocket()):
+            print(component.getName())
+        ```
+    """
 
     def __init__(self, jit):
-        """Give this any java object which implements iterable"""
+        """Wrap a component.
+
+        Args:
+            jit: A Java object that has an `iterator(True)` method, such as a `RocketComponent`.
+        """
         self.jit = jit.iterator(True)
 
     def __iter__(self):

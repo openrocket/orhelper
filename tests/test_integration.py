@@ -141,6 +141,12 @@ class IntegrationTests(unittest.TestCase):
         self.helper.run_simulation(reloaded_sim)
         self.assertIn(FlightEvent.APOGEE, self.helper.get_events(reloaded_sim))
 
+    def test_documents_can_be_loaded_and_saved_with_pathlib_paths(self):
+        doc = self.helper.load_doc(Path(sample_ork_path()))
+        destination = self.directory / "pathlib.ork"
+        self.helper.save_doc(destination, doc)
+        self.assertEqual(self.helper.load_doc(destination).getSimulationCount(), doc.getSimulationCount())
+
     def test_listener_callbacks_and_clone(self):
         listener = RecordingListener()
         clone = jpype.JObject(listener.clone(), self.core.simulation.listeners.SimulationListener)

@@ -1,0 +1,10 @@
+/* Keep member names such as TYPE_ACCELERATION_TOTAL on one line in the reference tables. */
+.md-typeset table:not([class]) td:first-child code {
+  white-space: nowrap;
+}
+
+/* Tighter cells, so the wide reference tables fit without wrapping every column. */
+.md-typeset table:not([class]) th,
+.md-typeset table:not([class]) td {
+  padding: 0.6em 0.8em;
+}

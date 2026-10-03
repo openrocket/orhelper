@@ -4,11 +4,15 @@
 [![Python](https://img.shields.io/pypi/pyversions/orhelper)](https://pypi.org/project/orhelper/)
 [![License: GPL v2](https://img.shields.io/badge/license-GPL%20v2-blue)](https://github.com/openrocket/orhelper/blob/master/LICENSE)
 [![Tests](https://github.com/openrocket/orhelper/actions/workflows/tests.yml/badge.svg)](https://github.com/openrocket/orhelper/actions/workflows/tests.yml)
+[![Documentation](https://img.shields.io/badge/docs-openrocket.info%2Forhelper-blue)](https://openrocket.info/orhelper/)
 
 **Script and automate [OpenRocket](https://openrocket.info) from Python.**
 Load a `.ork` file, tweak the rocket or launch conditions, run simulations, and
 get the results back as NumPy arrays: for parameter sweeps, optimisation, Monte
 Carlo landing-zone studies, or your own plots.
+
+**Documentation: [openrocket.info/orhelper](https://openrocket.info/orhelper/)**: installation, a user guide,
+the API reference, and a reference of every flight data variable with its unit.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/openrocket/orhelper/master/docs/img/simple_plot.png" alt="Altitude and vertical velocity of a simulated flight, with burnout and apogee annotated" width="520">
