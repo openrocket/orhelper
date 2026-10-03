@@ -40,9 +40,17 @@ are on the [OpenRocket releases page](https://github.com/openrocket/openrocket/r
 ## Examples and documentation
 
 - Keep examples short, commented and runnable from any directory. Use
-  `orhelper.sample_ork_path()` for the sample rocket.
-- If you change behaviour, update the README and add a line under "Unreleased"
-  in [CHANGELOG.md](CHANGELOG.md).
+  `orhelper.sample_ork_path()` for the sample rocket, and start each script with a docstring
+  that says what it shows.
+- Every `examples/*.py` is run against the jar by `tests/test_examples.py` (when
+  `OPENROCKET_JAR` is set), so a new example is tested automatically; it must exit
+  with status 0 and must not need a display. Add any extra packages it needs to `REQUIREMENTS`
+  in that file and to the `examples` extra in `pyproject.toml`.
+- `examples/tour.ipynb` is stored with its outputs. After changing it, re-run all cells
+  (restart the kernel first) so the committed outputs match.
+- If you change behaviour, update the README and add a line to [CHANGELOG.md](CHANGELOG.md)
+  under an "Unreleased" heading at the top (create it if it isn't there; maintainers
+  rename it to the version number when they release).
 
 ## Pull requests
 

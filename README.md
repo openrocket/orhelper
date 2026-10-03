@@ -2,7 +2,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/orhelper)](https://pypi.org/project/orhelper/)
 [![Python](https://img.shields.io/pypi/pyversions/orhelper)](https://pypi.org/project/orhelper/)
-[![License: GPL v2](https://img.shields.io/badge/license-GPL%20v2-blue)](LICENSE)
+[![License: GPL v2](https://img.shields.io/badge/license-GPL%20v2-blue)](https://github.com/openrocket/orhelper/blob/master/LICENSE)
 [![Tests](https://github.com/openrocket/orhelper/actions/workflows/tests.yml/badge.svg)](https://github.com/openrocket/orhelper/actions/workflows/tests.yml)
 
 **Script and automate [OpenRocket](https://openrocket.info) from Python.**
@@ -11,9 +11,9 @@ get the results back as NumPy arrays: for parameter sweeps, optimisation, Monte
 Carlo landing-zone studies, or your own plots.
 
 <p align="center">
-  <img src="docs/img/simple_plot.png" alt="Altitude and vertical velocity of a simulated flight, with burnout and apogee annotated" width="520">
+  <img src="https://raw.githubusercontent.com/openrocket/orhelper/master/docs/img/simple_plot.png" alt="Altitude and vertical velocity of a simulated flight, with burnout and apogee annotated" width="520">
   <br>
-  <em>Output of <a href="examples/simple_plot.py"><code>examples/simple_plot.py</code></a></em>
+  <em>Output of <a href="https://github.com/openrocket/orhelper/blob/master/examples/simple_plot.py"><code>examples/simple_plot.py</code></a></em>
 </p>
 
 ## Quickstart
@@ -57,7 +57,7 @@ Carlo landing-zone studies, or your own plots.
    (Exact numbers vary slightly from run to run, because `run_simulation`
    randomizes the simulation's random seed.)
 
-   The complete script is [`examples/quickstart.py`](examples/quickstart.py).
+   The complete script is [`examples/quickstart.py`](https://github.com/openrocket/orhelper/blob/master/examples/quickstart.py).
    If OpenRocket isn't in its default location, or it can't be found, pass the
    jar explicitly: `OpenRocketInstance(jar="/path/to/OpenRocket.jar")`.
 
@@ -77,7 +77,7 @@ and everything else is OpenRocket's own Java API.
   and events OpenRocket records. Pass members (or their names as strings) to the
   helpers above.
 - **`AbstractSimulationListener`** lets you hook into a simulation from Python
-  (see [`examples/monte_carlo.py`](examples/monte_carlo.py)).
+  (see [`examples/monte_carlo.py`](https://github.com/openrocket/orhelper/blob/master/examples/monte_carlo.py)).
 - **Everything else is a raw Java object.** `load_doc` returns an
   `OpenRocketDocument`, `doc.getSimulation(0)` a `Simulation`,
   `sim.getOptions()` a `SimulationOptions`, and so on. Call their Java methods
@@ -127,15 +127,25 @@ take `branch_number` (0 is the sustainer; 1, 2, ... are booster branches).
 
 ## Examples
 
-Examples live in [`examples/`](examples/). Some need extra packages:
+Examples live in [`examples/`](https://github.com/openrocket/orhelper/tree/master/examples). Start with the notebook
+[`tour.ipynb`](https://github.com/openrocket/orhelper/blob/master/examples/tour.ipynb) (needs `pip install jupyter matplotlib`), or run
+any script, for example `python examples/quickstart.py`. Some need extra packages:
 `pip install matplotlib scipy` (or `pip install "orhelper[examples]"`).
 
 | Example | What it shows | Extra packages |
 |---|---|---|
-| [`quickstart.py`](examples/quickstart.py) | Run a simulation, print apogee, max velocity and events | none |
-| [`simple_plot.py`](examples/simple_plot.py) | Plot altitude and velocity with annotated events | matplotlib |
-| [`lazy.py`](examples/lazy.py) | Find the launch angle that minimises upwind drift with `scipy.optimize` | matplotlib, scipy |
-| [`monte_carlo.py`](examples/monte_carlo.py) | Randomise launch angle, wind and masses; custom listeners; landing-zone statistics | none |
+| [`tour.ipynb`](https://github.com/openrocket/orhelper/blob/master/examples/tour.ipynb) | Guided notebook: run, plot, change launch conditions and components, pandas, listeners | jupyter, matplotlib |
+| [`quickstart.py`](https://github.com/openrocket/orhelper/blob/master/examples/quickstart.py) | Run a simulation, print apogee, max velocity and events | none |
+| [`events_and_stats.py`](https://github.com/openrocket/orhelper/blob/master/examples/events_and_stats.py) | Event table with altitudes, OpenRocket's summary statistics, landing distance | none |
+| [`edit_and_save.py`](https://github.com/openrocket/orhelper/blob/master/examples/edit_and_save.py) | Change a component and the launch conditions, compare, save a new `.ork` | none |
+| [`parameter_sweep.py`](https://github.com/openrocket/orhelper/blob/master/examples/parameter_sweep.py) | Sweep wind speed and launch angle and write a CSV file | none |
+| [`multistage.py`](https://github.com/openrocket/orhelper/blob/master/examples/multistage.py) | Read the data and events of each branch of a multistage rocket | none |
+| [`custom_listener.py`](https://github.com/openrocket/orhelper/blob/master/examples/custom_listener.py) | Run Python code at every simulation step with a listener | none |
+| [`parallel_runs.py`](https://github.com/openrocket/orhelper/blob/master/examples/parallel_runs.py) | Run simulations in parallel, one JVM per worker process | none |
+| [`custom_setup.py`](https://github.com/openrocket/orhelper/blob/master/examples/custom_setup.py) | Explicit `jar`, `jvm_args` and log settings; handling startup errors | none |
+| [`simple_plot.py`](https://github.com/openrocket/orhelper/blob/master/examples/simple_plot.py) | Plot altitude and velocity with annotated events | matplotlib |
+| [`lazy.py`](https://github.com/openrocket/orhelper/blob/master/examples/lazy.py) | Find the launch angle that minimises drift with `scipy.optimize` | matplotlib, scipy |
+| [`monte_carlo.py`](https://github.com/openrocket/orhelper/blob/master/examples/monte_carlo.py) | Randomise launch angle, wind and masses; custom listeners; landing-zone statistics | none |
 
 More background is on the
 [OpenRocket wiki](https://github.com/openrocket/openrocket/wiki/Scripting-with-Python-and-JPype).
@@ -237,14 +247,15 @@ OPENROCKET_JAR=/path/to/OpenRocket.jar python -m unittest discover -s tests -v
 ```
 
 These tests check every built-in flight-data type and event, actual simulation
-results, saving and reloading, listener cloning, and multistage branches. CI runs
-them against the released OpenRocket 22.02, 23.09 and 24.12 jars.
-See [CONTRIBUTING.md](CONTRIBUTING.md) for more, and [CHANGELOG.md](CHANGELOG.md)
+results, saving and reloading, listener cloning, and multistage branches. A second
+test module runs every script in `examples/` against the jar, so the examples can't
+silently break. CI runs both against the released OpenRocket 22.02, 23.09 and 24.12 jars.
+See [CONTRIBUTING.md](https://github.com/openrocket/orhelper/blob/master/CONTRIBUTING.md) for more, and [CHANGELOG.md](https://github.com/openrocket/orhelper/blob/master/CHANGELOG.md)
 for release notes.
 
 ## License
 
-orhelper is released under the [GNU General Public License v2](LICENSE).
+orhelper is released under the [GNU General Public License v2](https://github.com/openrocket/orhelper/blob/master/LICENSE).
 
 ## Credits
 - Richard Graham for the original script: [Source](https://sourceforge.net/p/openrocket/mailman/openrocket-devel/thread/4F17AA0C.1040002@rdg.cc/)

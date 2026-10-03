@@ -57,10 +57,10 @@ jobs:
           curl --fail --location --retry 3 --output "$OPENROCKET_JAR" \
             "https://github.com/openrocket/openrocket/releases/download/release-${{ matrix.openrocket }}/OpenRocket-${{ matrix.openrocket }}.jar"
       - name: Install
-        run: pip install -e .
+        run: pip install -e ".[examples]"  # matplotlib and scipy, so the plotting examples run too
       # Each OpenRocket version runs in its own job because JPype can only
       # start one JVM per Python process.
-      - name: Run tests, including the Java integration tests
+      - name: Run tests, including the Java integration tests and the examples
         run: python -m unittest discover -s tests -v
 
   package:

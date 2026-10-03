@@ -1,3 +1,10 @@
+"""Find the launch rod angle that makes the rocket land closest to the launch pad.
+
+With wind, tilting the launch rod into the wind makes the rocket drift back towards where it
+started. This example uses ``scipy.optimize.fmin`` to search for the angle that minimises the
+distance from the pad where the rocket comes back down, then plots the trajectories for a
+range of angles with the optimum highlighted. Needs scipy and matplotlib.
+"""
 import math
 import numpy as np
 from scipy.optimize import fmin
