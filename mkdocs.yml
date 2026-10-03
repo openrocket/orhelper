@@ -1,0 +1,105 @@
+site_name: orhelper
+site_description: Script and automate OpenRocket simulations from Python
+site_url: https://openrocket.info/orhelper/
+repo_url: https://github.com/openrocket/orhelper
+repo_name: openrocket/orhelper
+edit_uri: edit/master/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+extra_css:
+  - stylesheets/extra.css
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Installation: installation.md
+      - Quickstart: quickstart.md
+  - User guide:
+      - How orhelper works: guide/concepts.md
+      - Running simulations: guide/simulations.md
+      - Changing the rocket and launch: guide/modify.md
+      - Listeners: guide/listeners.md
+      - Notebooks and parallel runs: guide/notebooks-parallel.md
+      - Errors, logging and JVM options: guide/errors-logging.md
+  - Examples: examples.md
+  - Reference:
+      - API: reference/api.md
+      - Flight data variables: reference/flight-data.md
+      - Flight events: reference/flight-events.md
+      - OpenRocket versions: reference/versions.md
+  - Help:
+      - Troubleshooting: troubleshooting.md
+      - Changelog: changelog.md
+      - Contributing: contributing.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+          options:
+            docstring_style: google
+            docstring_options:
+              # Arguments and results that are Java objects have no Python type: the docstrings name the Java class.
+              warn_missing_types: false
+              returns_multiple_items: false
+              returns_named_value: false
+            docstring_section_style: list
+            heading_level: 2
+            members_order: source
+            merge_init_into_class: true
+            separate_signature: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_signature_annotations: true
+            show_source: false
+            show_symbol_type_heading: true
+            signature_crossrefs: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn

@@ -13,6 +13,12 @@ PyPI before this one is 0.1.3, so this release includes all changes since then.
 > JPype 1.3 or newer are required. See *Changed* below.
 
 ### Added
+- A documentation site, built with MkDocs and published to GitHub Pages: installation, quickstart,
+  a user guide, an API reference generated from the docstrings, a reference of every `FlightDataType` and
+  `FlightEvent` member (with units and the OpenRocket versions that have it), a page on the differences
+  between OpenRocket versions, and troubleshooting. Its code samples are the tested files in `examples/`.
+- Docstrings for the whole public API, including every `AbstractSimulationListener` hook.
+- `tools/generate_reference.py`, which generates the flight data and event reference pages from OpenRocket jars.
 - Seven new examples: `events_and_stats.py`, `edit_and_save.py`, `parameter_sweep.py`,
   `multistage.py`, `custom_listener.py`, `parallel_runs.py` and `custom_setup.py`, and a guided
   notebook, `examples/tour.ipynb`.
@@ -52,6 +58,7 @@ PyPI before this one is 0.1.3, so this release includes all changes since then.
 - `examples/simple.ork` moved to `orhelper/data/simple.ork`.
 
 ### Fixed
+- `Helper.load_doc` and `save_doc` raised `TypeError` for a `pathlib.Path`; they now accept any path-like object.
 - `examples/lazy.py` crashed with `TypeError: only 0-dimensional arrays can be converted to Python
   scalars` on NumPy 2 (scipy's `fmin` passes a one-element array where a number was expected).
 - `examples/monte_carlo.py` overstated the landing distance (by 41% at the sample rocket's latitude

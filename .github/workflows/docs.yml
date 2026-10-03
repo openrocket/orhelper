@@ -1,0 +1,60 @@
+name: Docs
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "orhelper/**"
+      - "examples/**"
+      - "tools/**"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build the documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: docs/requirements.txt
+      - name: Install
+        run: pip install -r docs/requirements.txt
+      # --strict makes warnings, such as a broken link or a bad docstring, fail the build.
+      - name: Build
+        run: mkdocs build --strict
+      - name: Upload the site
+        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    # Only publish what is on master, never a pull request or another branch.
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

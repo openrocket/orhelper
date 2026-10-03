@@ -7,6 +7,11 @@ __all__ = [
 ]
 
 class OrLogLevel(Enum):
+    """Log levels for [`OpenRocketInstance`][orhelper.OpenRocketInstance].
+
+    Instead of a member you can pass its name as a string, in any case, for example `log_level="error"`.
+    From quiet to chatty: `OFF`, `ERROR`, `WARN`, `INFO` (the default), `DEBUG`, `TRACE`, `ALL`.
+    """
     OFF = auto()
     ERROR = auto()
     WARN = auto()
@@ -17,6 +22,13 @@ class OrLogLevel(Enum):
 
 # Mirrors info.openrocket.core.simulation.FlightDataType
 class FlightDataType(Enum):
+    """The variables OpenRocket records during a simulation, for example `TYPE_ALTITUDE`.
+
+    Pass members, or their names as strings, to [`Helper.get_timeseries`][orhelper.Helper.get_timeseries]
+    and [`Helper.get_final_values`][orhelper.Helper.get_final_values]. Values are in SI units. See
+    [Flight data variables](flight-data.md) for every member, with its unit and the OpenRocket versions
+    that have it.
+    """
     TYPE_TIME = auto()
     TYPE_ALTITUDE = auto()
     TYPE_VELOCITY_Z = auto()
@@ -95,6 +107,11 @@ class FlightDataType(Enum):
 
 # Mirrors info.openrocket.core.simulation.FlightEvent
 class FlightEvent(Enum):
+    """The kinds of event OpenRocket records during a flight, for example `APOGEE` or `BURNOUT`.
+
+    [`Helper.get_events`][orhelper.Helper.get_events] returns them as dictionary keys. See
+    [Flight events](flight-events.md) for every member.
+    """
     LAUNCH = auto()
     IGNITION = auto()
     LIFTOFF = auto()
